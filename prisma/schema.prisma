@@ -1,0 +1,400 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  avatar    String?
+  role      String   @default("user")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  apps           App[]
+  tasks          Task[]
+  emails         Email[]
+  analyses       Analysis[]
+  chatHistory    ChatMessage[]
+  transactions   Transaction[]
+  settings       Settings?
+  workContexts   WorkContext[]
+  voiceNotes     VoiceNote[]
+  inventoryItems InventoryItem[]
+  codeSnippets   CodeSnippet[]
+  energyLogs     EnergyLog[]
+  certifications Certification[]
+  emergencyProtocols EmergencyProtocol[]
+  shifts         Shift[]
+  clientLogs     ClientLog[]
+  passwordEntries PasswordEntry[]
+  auditLogs      AuditLog[]
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String   // e.g. "context_switch", "task_created", "password_added", "cache_clear_requested"
+  details   String?  // JSON or short description
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model PasswordEntry {
+  id        String   @id @default(cuid())
+  website   String
+  username  String
+  encryptedPassword String  // AES-256-GCM encrypted
+  url       String?
+  notes     String?
+  category  String   @default("Personal")
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastUsed  DateTime?
+
+  @@index([userId])
+}
+
+model App {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  category    String?
+  status      String   @default("healthy") // healthy, warning, critical
+  version     String?
+  lastChecked DateTime @default(now())
+  uptime      Float    @default(99.9)
+  responseTime Int?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  category    String   @default("maintenance") // maintenance, analysis, monitoring, cleanup
+  schedule    String   // cron expression or interval
+  scheduleType String  @default("interval") // interval, daily, weekly, monthly
+  status      String   @default("active") // active, paused, completed
+  energyLevel String   @default("medium") // high, medium, low - cognitive energy required
+  workContext String?  // electrical, healthcare, development
+  lastRun     DateTime?
+  nextRun     DateTime?
+  runCount    Int      @default(0)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  logs TaskLog[]
+  
+  @@index([userId])
+  @@index([workContext])
+}
+
+model TaskLog {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  status    String   // success, failed, running
+  message   String?
+  duration  Int?     // in milliseconds
+  createdAt DateTime @default(now())
+  
+  @@index([taskId])
+}
+
+model Email {
+  id          String   @id @default(cuid())
+  subject     String
+  sender      String
+  senderEmail String
+  recipient   String
+  preview     String?
+  content     String?
+  provider    String   // gmail, yahoo, outlook, hotmail
+  category    String   @default("primary") // primary, social, promotions, updates, forums
+  priority    String   @default("normal") // high, normal, low
+  isRead      Boolean  @default(false)
+  isStarred   Boolean  @default(false)
+  isArchived  Boolean  @default(false)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([category])
+  @@index([provider])
+}
+
+model Analysis {
+  id          String   @id @default(cuid())
+  title       String
+  type        String   // performance, financial, usage, trend
+  data        String   // JSON string
+  insights    String?  // AI-generated insights
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  role      String   // user, assistant
+  content   String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  description String
+  amount      Float
+  type        String   // income, expense
+  category    String   // salary, freelance, food, transport, entertainment, bills, shopping, other
+  workContext String?  // electrical, healthcare, development - for unified billing
+  receiptData String?  // base64 or path to scanned receipt
+  date        DateTime
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([category])
+  @@index([workContext])
+}
+
+model Settings {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme                 String   @default("dark")
+  notificationsEnabled  Boolean  @default(true)
+  emailNotifications    Boolean  @default(true)
+  pushNotifications     Boolean  @default(false)
+  aiSuggestionsEnabled  Boolean  @default(true)
+  autoAnalysisEnabled   Boolean  @default(true)
+  connectedProviders    String   @default("[]") // JSON array of email providers
+  aiPreferences         String   @default("{}") // JSON object for AI preferences
+  currentContext        String   @default("development") // electrical, healthcare, development
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+// === NEW PROFESSIONAL CONTEXT MODELS ===
+
+// Work Context - for location-based context switching
+model WorkContext {
+  id          String   @id @default(cuid())
+  name        String   // "Hospital", "Job Site", "Home Office"
+  type        String   // electrical, healthcare, development
+  location    String?  // Address or coordinates
+  latitude    Float?
+  longitude   Float?
+  radius      Float    @default(100) // meters for geofencing
+  isActive    Boolean  @default(false)
+  color       String   @default("#8B5CF6") // UI color coding
+  icon        String   @default("briefcase")
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([type])
+}
+
+// Voice Notes - for hands-free documentation
+model VoiceNote {
+  id          String   @id @default(cuid())
+  transcript  String   // Speech-to-text result
+  category    String   // patient_obs, electrical, code_idea, general
+  workContext String?  // electrical, healthcare, development
+  audioUrl    String?  // Path to audio file if saved
+  duration    Int?     // Duration in seconds
+  tags        String   @default("[]") // JSON array of tags
+  processed   Boolean  @default(false) // Whether AI has processed it
+  summary     String?  // AI-generated summary
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([category])
+  @@index([workContext])
+}
+
+// Inventory - unified parts and supplies tracking
+model InventoryItem {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  category     String   // electrical_parts, medical_supplies, dev_equipment
+  partNumber   String?
+  quantity     Int      @default(0)
+  minQuantity  Int      @default(1) // Reorder threshold
+  unit         String   @default("each") // each, box, ft, meters
+  location     String?  // Where stored
+  cost         Float?
+  supplier     String?
+  lastRestocked DateTime?
+  needsRestock Boolean  @default(false)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([category])
+}
+
+// Code Snippets - for on-the-go development ideas
+model CodeSnippet {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  code        String
+  language    String   @default("javascript")
+  tags        String   @default("[]") // JSON array
+  source      String   @default("voice") // voice, typed, imported
+  projectId   String?  // Associated project
+  isFavorite  Boolean  @default(false)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([language])
+}
+
+// Energy Log - cognitive load and energy tracking
+model EnergyLog {
+  id          String   @id @default(cuid())
+  level       Int      // 1-10 scale
+  energyType  String   // mental, physical, emotional
+  workContext String?  // electrical, healthcare, development
+  activity    String?
+  notes       String?
+  tags        String   @default("[]")
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([workContext])
+}
+
+// Certifications - compliance and certification tracking
+model Certification {
+  id            String   @id @default(cuid())
+  name          String
+  type          String   // electrical, healthcare, development
+  issuingBody   String?
+  licenseNumber String?
+  issueDate     DateTime?
+  expiryDate    DateTime?
+  status        String   @default("active") // active, expiring, expired, renewal_needed
+  cpdHours      Float    @default(0) // Continuing Professional Development
+  requiredHours Float?
+  documentUrl   String?
+  reminders     Boolean  @default(true)
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+}
+
+// Emergency Protocols - quick reference for high-stress scenarios
+model EmergencyProtocol {
+  id          String   @id @default(cuid())
+  title       String
+  type        String   // electrical, healthcare, development
+  description String?
+  steps       String   // JSON array of steps
+  contacts    String   @default("[]") // JSON array of emergency contacts
+  equipment   String   @default("[]") // Required equipment
+  isQuickAccess Boolean @default(false) // Show on panic button
+  priority    Int      @default(1) // 1=highest
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([type])
+}
+
+// Shifts - for shift tracking and project sync
+model Shift {
+  id          String   @id @default(cuid())
+  type        String   // electrical, healthcare, development
+  location    String?
+  startTime   DateTime
+  endTime     DateTime?
+  duration    Int?     // Hours
+  isOvertime  Boolean  @default(false)
+  notes       String?
+  energyAfter Int?     // Energy level 1-10 after shift
+  impactOnProjects String? // JSON of affected project deadlines
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([type])
+}
+
+// Client Log - interdisciplinary search index
+model ClientLog {
+  id          String   @id @default(cuid())
+  name        String   // Client/patient/project name
+  type        String   // electrical_client, healthcare_patient, dev_project
+  context     String   // electrical, healthcare, development
+  notes       String?
+  contactInfo String?
+  lastContact DateTime?
+  tags        String   @default("[]")
+  searchable  String   // Computed field for unified search
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([context])
+}
