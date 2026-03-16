@@ -1278,8 +1278,8 @@ export default function Home() {
                     onClick={() => switchContext(ctx.id)}
                     className={`p-2 rounded-lg flex flex-col items-center gap-1 transition-all ${
                       ctx.isActive
-                        ? `${ctx.color}/20 border border-${ctx.color}/50`
-                        : 'bg-white/5 hover:bg-white/10 border border-transparent'
+                        ? 'bg-accent border border-border/60'
+                        : 'hover:bg-accent/60 border border-transparent'
                     }`}
                   >
                     <ContextIcon className={`w-4 h-4 ${ctx.isActive ? '' : 'text-muted-foreground'}`}
@@ -1312,8 +1312,8 @@ export default function Home() {
                 onClick={() => handleTabChange(item.id)}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${
                   activeTab === item.id
-                    ? 'bg-lime-500/20 text-lime-500 border border-lime-500/30'
-                    : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'
+                    ? 'bg-accent text-foreground border border-border/60'
+                    : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
                 }`}
               >
                 <item.icon className="w-5 h-5" />
@@ -1329,7 +1329,7 @@ export default function Home() {
               <div className="flex items-center gap-3">
                 <Avatar className="w-10 h-10">
                   <AvatarImage src={profileImage} />
-                  <AvatarFallback className="bg-gradient-to-br from-lime-500 to-emerald-500 text-white text-xs">
+                  <AvatarFallback className="bg-gradient-to-br from-sky-500 to-cyan-500 text-white text-xs">
                     {isLoggedIn && userProfile.firstName 
                       ? `${userProfile.firstName.charAt(0)}${userProfile.lastName.charAt(0)}`.toUpperCase()
                       : '?'}
@@ -1387,7 +1387,7 @@ export default function Home() {
                 </h2>
                 <p className="text-xs md:text-sm text-muted-foreground hidden sm:block">
                   {currentTime.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                  <span className="ml-2 text-lime-500">
+                  <span className="ml-2 text-sky-500">
                     {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </p>
@@ -1402,7 +1402,7 @@ export default function Home() {
                 className="relative tap-target"
                 onClick={() => setAiModalOpen(true)}
               >
-                <Bot className="w-5 h-5 text-lime-500" />
+                <Bot className="w-5 h-5 text-sky-500" />
               </Button>
               <Button variant="ghost" size="icon" className="relative tap-target">
                 <Bell className="w-5 h-5" />
@@ -1413,14 +1413,14 @@ export default function Home() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="Search..."
-                  className="pl-9 w-64 bg-white/5 border-white/10"
+                  className="pl-9 w-64 bg-card border-border/60"
                 />
               </div>
               {/* Mobile: Profile Avatar */}
               {isMobile && (
                 <Avatar className="w-8 h-8">
                   <AvatarImage src={profileImage} />
-                  <AvatarFallback className="bg-gradient-to-br from-lime-500 to-emerald-500 text-white text-xs">
+                  <AvatarFallback className="bg-gradient-to-br from-sky-500 to-cyan-500 text-white text-xs">
                     {isLoggedIn && userProfile.firstName 
                       ? `${userProfile.firstName.charAt(0)}${userProfile.lastName.charAt(0)}`.toUpperCase()
                       : '?'}
@@ -1456,10 +1456,52 @@ export default function Home() {
                         </p>
                       </div>
                       <div className="hidden md:flex items-center gap-4">
-                        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center">
-                          <Bot className="w-10 h-10 text-purple-400" />
+                        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-sky-500/20 to-cyan-500/20 flex items-center justify-center">
+                          <Bot className="w-10 h-10 text-sky-400" />
                         </div>
                       </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Guard panel – focus & wellbeing summary */}
+                <Card className="glass-card">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-sky-400" />
+                      Guard – Focus & wellbeing
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">
+                        {focusActive
+                          ? 'Focus timer is running – I’ll minimise distractions and nudge you if you drift.'
+                          : 'No active focus block. Start a 25‑minute deep‑work session or a short breathing break.'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Energy level: {energyLevel}/10 • Breathing {breathingActive ? 'active' : 'idle'} • Play streak:{' '}
+                        {playStreak}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setActiveTab('playcentre')}>
+                        <Brain className="w-3 h-3 mr-1" />
+                        Open Play Centre
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => {
+                          setActiveTab('playcentre')
+                          setFocusActive(true)
+                          setFocusTimeLeft(focusMinutes * 60)
+                          setBreathingActive(false)
+                        }}
+                      >
+                        <Target className="w-3 h-3 mr-1" />
+                        Start focus block
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -1495,7 +1537,7 @@ export default function Home() {
                                 key={i}
                                 variant="outline"
                                 size="sm"
-                                className="border-white/10 hover:bg-white/5"
+                                className="border-border/50 hover:bg-accent"
                                 onClick={() => handleTabChange(s.tabId)}
                               >
                                 {s.label}
@@ -1549,7 +1591,7 @@ export default function Home() {
                         <Button
                           key={action.label}
                           variant="outline"
-                          className="h-auto py-4 flex-col gap-2 border-white/10 hover:bg-white/5"
+                          className="h-auto py-4 flex-col gap-2 border-border/50 hover:bg-accent"
                           onClick={action.action}
                         >
                           <action.icon className="w-5 h-5" />
@@ -3312,8 +3354,8 @@ export default function Home() {
                 <ScrollArea className="h-full p-4">
                   {aiMessages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center">
-                      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center mb-4">
-                        <Wand2 className="w-8 h-8 text-purple-400" />
+                      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-sky-500/20 to-cyan-500/20 flex items-center justify-center mb-4">
+                        <Wand2 className="w-8 h-8 text-sky-400" />
                       </div>
                       <h4 className="font-semibold mb-2">How can I help you today?</h4>
                       <p className="text-sm text-muted-foreground mb-6 max-w-xs">
