@@ -18,25 +18,29 @@ model User {
   role      String   @default("user")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Outlook / email integration
+  outlookEmail        String?
+  outlookRefreshToken String?
   
-  apps           App[]
-  tasks          Task[]
-  emails         Email[]
-  analyses       Analysis[]
-  chatHistory    ChatMessage[]
-  transactions   Transaction[]
-  settings       Settings?
-  workContexts   WorkContext[]
-  voiceNotes     VoiceNote[]
-  inventoryItems InventoryItem[]
-  codeSnippets   CodeSnippet[]
-  energyLogs     EnergyLog[]
-  certifications Certification[]
-  emergencyProtocols EmergencyProtocol[]
-  shifts         Shift[]
-  clientLogs     ClientLog[]
-  passwordEntries PasswordEntry[]
-  auditLogs      AuditLog[]
+  apps                App[]
+  tasks               Task[]
+  emails              Email[]
+  analyses            Analysis[]
+  chatHistory         ChatMessage[]
+  transactions        Transaction[]
+  settings            Settings?
+  workContexts        WorkContext[]
+  voiceNotes          VoiceNote[]
+  inventoryItems      InventoryItem[]
+  codeSnippets        CodeSnippet[]
+  energyLogs          EnergyLog[]
+  certifications      Certification[]
+  emergencyProtocols  EmergencyProtocol[]
+  shifts              Shift[]
+  clientLogs          ClientLog[]
+  passwordEntries     PasswordEntry[]
+  auditLogs           AuditLog[]
 }
 
 model AuditLog {
