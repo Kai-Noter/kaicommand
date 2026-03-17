@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import ZAI from 'z-ai-web-dev-sdk'
+import { generateCompletion } from '@/lib/ai'
 import { getUserId } from '@/lib/api-auth'
 
 // Mock analysis data
@@ -84,31 +84,26 @@ export async function POST(request: NextRequest) {
   try {
     const { query } = await request.json()
 
-    // Generate AI insights using z-ai-web-dev-sdk
-    const zai = await ZAI.create()
-
-    const completion = await zai.chat.completions.create({
-      messages: [
-        {
-          role: 'system',
-          content: `You are a data analyst AI. Generate concise, actionable insights based on the following data:
-          
-          Metrics: ${JSON.stringify(MOCK_ANALYTICS.metrics)}
-          Trends: ${JSON.stringify(MOCK_ANALYTICS.trendData)}
-          Categories: ${JSON.stringify(MOCK_ANALYTICS.categoryData)}
-          
-          Provide 3-5 key insights in a structured format. Focus on trends, opportunities, and potential concerns.`
-        },
-        {
-          role: 'user',
-          content: query || 'Analyze the data and provide insights.'
-        }
-      ],
+    // Generate AI insights using central AI wrapper (falls back to OpenAI if needed)
+    const insights = await generateCompletion([
+      {
+        role: 'system',
+        content: `You are a data analyst AI. Generate concise, actionable insights based on the following data:
+        
+        Metrics: ${JSON.stringify(MOCK_ANALYTICS.metrics)}
+        Trends: ${JSON.stringify(MOCK_ANALYTICS.trendData)}
+        Categories: ${JSON.stringify(MOCK_ANALYTICS.categoryData)}
+        
+        Provide 3-5 key insights in a structured format. Focus on trends, opportunities, and potential concerns.`
+      },
+      {
+        role: 'user',
+        content: query || 'Analyze the data and provide insights.'
+      }
+    ], {
       temperature: 0.7,
       max_tokens: 500
     })
-
-    const insights = completion.choices[0]?.message?.content || 'Unable to generate insights.'
 
     // Save analysis to database
     const analysis = await db.analysis.create({

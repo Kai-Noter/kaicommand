@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
 import { db } from '@/lib/db'
 import { getUserId } from '@/lib/api-auth'
+import { generateCompletion } from '@/lib/ai'
 
 // System prompt: Secretary, servant, reliable friend — not a yes-person. Devil's advocate when it helps.
 const SYSTEM_PROMPT = `You are KaiCommand: an elite AI Command Center. You operate as a hybrid of a high-level Secretary, a loyal Servant, and a reliable Friend. Your objective is to manage the user’s digital life, physical health, and cognitive performance with proactive precision. You run the Command Center so they can focus on what matters. You are trusted to carry out tasks when they're not around (e.g. app updates, clearing cache, surfacing bugs, reminders) and to give honest, well-reasoned feedback — including playing devil's advocate when that would improve their decisions.
@@ -122,8 +122,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 })
     }
 
-    const zai = await ZAI.create()
-
     // Build context-aware system prompt
     let contextPrompt = SYSTEM_PROMPT
     if (context) {
@@ -143,17 +141,25 @@ export async function POST(request: NextRequest) {
       { role: 'user' as const, content: message }
     ]
 
-    // Adjust parameters based on voice mode
     const maxTokens = voiceMode ? 300 : 1000
     const temperature = voiceMode ? 0.6 : 0.7
 
-    const completion = await zai.chat.completions.create({
-      messages,
-      temperature,
-      max_tokens: maxTokens
-    })
-
-    const assistantMessage = completion.choices[0]?.message?.content || 'I apologize, but I could not generate a response. Please try again.'
+    let assistantMessage: string
+    try {
+      assistantMessage = await generateCompletion(messages, { temperature, max_tokens: maxTokens })
+    } catch (sdkError: unknown) {
+      const msg = sdkError instanceof Error ? sdkError.message : String(sdkError)
+      if (msg.includes('not configured')) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: msg
+          },
+          { status: 503 }
+        )
+      }
+      throw sdkError
+    }
 
     // Detect if this is an action request
     let action: { type: string; context?: string; tab?: string } | null = null
@@ -223,9 +229,11 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('Chat API error:', error)
+    const message = error instanceof Error ? error.message : 'Failed to process chat message'
+    const isConfig = message.includes('not configured') || message.includes('Configuration') || message.includes('ZAI_')
     return NextResponse.json(
-      { error: 'Failed to process chat message', success: false },
-      { status: 500 }
+      { error: message, success: false },
+      { status: isConfig ? 503 : 500 }
     )
   }
 }

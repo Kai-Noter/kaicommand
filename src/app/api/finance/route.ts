@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import ZAI from 'z-ai-web-dev-sdk'
+import { generateCompletion } from '@/lib/ai'
 import { getUserId } from '@/lib/api-auth'
 
 // Mock finance data
@@ -137,37 +137,32 @@ export async function POST(request: NextRequest) {
     const data = await request.json()
 
     if (data.type === 'recommendations') {
-      // Generate AI financial recommendations
-      const zai = await ZAI.create()
-
-      const completion = await zai.chat.completions.create({
-        messages: [
-          {
-            role: 'system',
-            content: `You are a financial advisor AI. Based on the following data, provide 3-5 actionable financial recommendations:
-            
-            Budget Data: ${JSON.stringify(BUDGET_DATA)}
-            Monthly Data: ${JSON.stringify([
-              { name: 'Jan', income: 9500, expenses: 4500 },
-              { name: 'Feb', income: 10200, expenses: 4800 },
-              { name: 'Mar', income: 8800, expenses: 4200 },
-              { name: 'Apr', income: 11000, expenses: 5100 },
-              { name: 'May', income: 10500, expenses: 4600 },
-              { name: 'Jun', income: 12000, expenses: 5200 }
-            ])}
-            
-            Provide practical advice for budgeting, saving, and spending optimization.`
-          },
-          {
-            role: 'user',
-            content: data.query || 'Provide financial recommendations based on my spending patterns.'
-          }
-        ],
+      // Generate AI financial recommendations via central AI routing
+      const recommendations = await generateCompletion([
+        {
+          role: 'system',
+          content: `You are a financial advisor AI. Based on the following data, provide 3-5 actionable financial recommendations:
+          
+          Budget Data: ${JSON.stringify(BUDGET_DATA)}
+          Monthly Data: ${JSON.stringify([
+            { name: 'Jan', income: 9500, expenses: 4500 },
+            { name: 'Feb', income: 10200, expenses: 4800 },
+            { name: 'Mar', income: 8800, expenses: 4200 },
+            { name: 'Apr', income: 11000, expenses: 5100 },
+            { name: 'May', income: 10500, expenses: 4600 },
+            { name: 'Jun', income: 12000, expenses: 5200 }
+          ])}
+          
+          Provide practical advice for budgeting, saving, and spending optimization.`
+        },
+        {
+          role: 'user',
+          content: data.query || 'Provide financial recommendations based on my spending patterns.'
+        }
+      ], {
         temperature: 0.7,
         max_tokens: 500
       })
-
-      const recommendations = completion.choices[0]?.message?.content || 'Unable to generate recommendations.'
 
       return NextResponse.json({ recommendations, success: true })
     }

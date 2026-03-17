@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import ZAI from 'z-ai-web-dev-sdk'
+import { generateCompletion } from '@/lib/ai'
 import { getUserId } from '@/lib/api-auth'
 import { logAudit } from '@/lib/audit'
 import { indexKnowledgeNode } from '@/lib/second-brain'
@@ -375,28 +375,25 @@ export async function POST(request: NextRequest) {
 
     // Voice note with NLP categorization
     if (action === 'voice-note') {
-      const zai = await ZAI.create()
-
-      const categorization = await zai.chat.completions.create({
-        messages: [
-          {
-            role: 'system',
-            content: `You are an NLP classifier. Analyze the voice transcript and determine:
+      const categorization = await generateCompletion([
+        {
+          role: 'system',
+          content: `You are an NLP classifier. Analyze the voice transcript and determine:
 1. Category: one of "patient_obs", "electrical", "code_idea", "general"
 2. Tags: 3-5 relevant tags
 3. Summary: a brief 1-sentence summary
 
 Return JSON: { "category": "...", "tags": [...], "summary": "..." }`
-          },
-          { role: 'user', content: payload.transcript }
-        ],
+        },
+        { role: 'user', content: payload.transcript }
+      ], {
         temperature: 0.3,
         max_tokens: 200
       })
 
       let nlpResult = { category: 'general', tags: [], summary: '' }
       try {
-        nlpResult = JSON.parse(categorization.choices[0]?.message?.content || '{}')
+        nlpResult = JSON.parse(categorization || '{}')
       } catch (e) {
         console.error('Failed to parse NLP result')
       }
@@ -485,24 +482,21 @@ Return JSON: { "category": "...", "tags": [...], "summary": "..." }`
 
     // Shift logging with project impact
     if (action === 'log-shift') {
-      const zai = await ZAI.create()
-
-      const impactAnalysis = await zai.chat.completions.create({
-        messages: [
-          {
-            role: 'system',
-            content: `You are a project management assistant. Given shift details, suggest which project deadlines might need adjustment.
+      const impactAnalysis = await generateCompletion([
+        {
+          role: 'system',
+          content: `You are a project management assistant. Given shift details, suggest which project deadlines might need adjustment.
 Return JSON: { "affectedProjects": [{ "name": "...", "delay": "X hours/days", "reason": "..." }] }`
-          },
-          { role: 'user', content: JSON.stringify(payload) }
-        ],
+        },
+        { role: 'user', content: JSON.stringify(payload) }
+      ], {
         temperature: 0.5,
         max_tokens: 300
       })
 
       let projectImpact = {}
       try {
-        projectImpact = JSON.parse(impactAnalysis.choices[0]?.message?.content || '{}')
+        projectImpact = JSON.parse(impactAnalysis || '{}')
       } catch (e) { }
 
       const shift = await db.shift.create({
