@@ -53,6 +53,8 @@ model User {
   interactions        Interaction[]
 
   // Smart Notes
+  smartFolders        SmartFolder[]
+  smartSubfolders     SmartSubfolder[]
   smartNotes          SmartNote[]
 
   // Legal Radar
@@ -533,13 +535,50 @@ model KnowledgeEdge {
 }
 
 // === SMART NOTES ===
-// Apple Notes / Evernote style rich documents
+// Hierarchical 3-Space System and Apple Notes style storage
+
+model SmartFolder {
+  id          String   @id @default(cuid())
+  name        String
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  subfolders  SmartSubfolder[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+model SmartSubfolder {
+  id          String   @id @default(cuid())
+  name        String
+  
+  folderId    String
+  folder      SmartFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  notes       SmartNote[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([folderId])
+}
+
 model SmartNote {
   id          String   @id @default(cuid())
   title       String
   content     String   // Markdown or HTML
-  folder      String   @default("Notes")
-  subfolder   String?
+  
+  subfolderId String
+  subfolder   SmartSubfolder @relation(fields: [subfolderId], references: [id], onDelete: Cascade)
+  
   tags        String   @default("[]") // JSON array
   isPinned    Boolean  @default(false)
   
@@ -550,7 +589,7 @@ model SmartNote {
   updatedAt   DateTime @updatedAt
   
   @@index([userId])
-  @@index([folder])
+  @@index([subfolderId])
 }
 
 // === LEGAL RADAR ===

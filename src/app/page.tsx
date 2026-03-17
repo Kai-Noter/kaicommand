@@ -634,22 +634,7 @@ export default function Home() {
     fetchContexts()
   }, [])
 
-  // Smart Notes fetch logic
-  useEffect(() => {
-    if (activeTab !== 'smart-notes') return
-    const fetchNotes = async () => {
-      try {
-        const res = await fetch('/api/smart-notes')
-        const data = await res.json()
-        if (data.success) {
-          setSmartNotes(data.notes || [])
-        }
-      } catch (error) {
-        console.error('Failed to fetch smart notes:', error)
-      }
-    }
-    fetchNotes()
-  }, [activeTab])
+  // Smart Notes now manages its own data fetching internally
 
   const professionalTabs = ['context', 'voice-notes', 'certifications', 'emergency']
   useEffect(() => {
@@ -1372,31 +1357,7 @@ export default function Home() {
 
             {/* Smart Notes Tab */}
             {activeTab === 'smart-notes' && (
-              <SmartNotesView 
-                notes={smartNotes} 
-                onSaveNote={async (note) => {
-                  const res = await fetch('/api/smart-notes', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(note)
-                  })
-                  const data = await res.json()
-                  if (data.success) {
-                    setSmartNotes(prev => {
-                      const exists = prev.find(n => n.id === data.note.id)
-                      if (exists) return prev.map(n => n.id === data.note.id ? data.note : n)
-                      return [data.note, ...prev]
-                    })
-                    return data.note
-                  }
-                }}
-                onDeleteNote={async (id) => {
-                  const res = await fetch(`/api/smart-notes?id=${id}`, { method: 'DELETE' })
-                  if (res.ok) {
-                    setSmartNotes(prev => prev.filter(n => n.id !== id))
-                  }
-                }}
-              />
+              <SmartNotesView />
             )}
 
             {/* Certifications Tab */}

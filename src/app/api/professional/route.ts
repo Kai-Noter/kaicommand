@@ -444,11 +444,30 @@ Return JSON: { "category": "...", "tags": [...], "summary": "...", "isSmartNote"
       // Automatically create a Smart Note if triggered
       if (nlpResult.isSmartNote) {
          try {
+           // Ensure we have a valid Subfolder to place this Voice Note into
+           let targetSubfolder = await db.smartSubfolder.findFirst({
+             where: { name: 'Voice Notes', userId }
+           })
+           
+           if (!targetSubfolder) {
+             let parentFolder = await db.smartFolder.findFirst({
+               where: { name: 'Inbox', userId }
+             })
+             if (!parentFolder) {
+               parentFolder = await db.smartFolder.create({
+                 data: { name: 'Inbox', userId }
+               })
+             }
+             targetSubfolder = await db.smartSubfolder.create({
+               data: { name: 'Voice Notes', folderId: parentFolder.id, userId }
+             })
+           }
+
            const smartNote = await db.smartNote.create({
              data: {
                title: nlpResult.smartNoteTitle || 'Voice Note',
                content: payload.transcript + (nlpResult.summary ? `\n\n**AI Summary:** ${nlpResult.summary}` : ''),
-               folder: nlpResult.smartNoteFolder || 'Voice Notes',
+               subfolderId: targetSubfolder.id,
                userId
              }
            })

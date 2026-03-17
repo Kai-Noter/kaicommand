@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { getUserId } from '@/lib/api-auth'
 import { indexKnowledgeNode } from '@/lib/second-brain'
 
+// Fetch the entire Folder -> Subfolder -> Note hierarchy
 export async function GET(request: NextRequest) {
   const userId = await getUserId(request)
   if (!userId) {
@@ -10,31 +11,106 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const notes = await db.smartNote.findMany({
+    const folders = await db.smartFolder.findMany({
       where: { userId },
-      orderBy: { updatedAt: 'desc' }
+      include: {
+        subfolders: {
+          include: {
+            notes: {
+              orderBy: { updatedAt: 'desc' }
+            }
+          },
+          orderBy: { createdAt: 'asc' }
+        }
+      },
+      orderBy: { createdAt: 'asc' }
     })
     
-    // Seed an initial note if none exist
-    if (notes.length === 0) {
-      const welcomeNote = await db.smartNote.create({
+    // Helper to compute node properties dynamically
+    const enrichHierarchy = (hierarchy: any[]) => {
+      return hierarchy.map(folder => {
+        let totalNotes = 0;
+        
+        const allNotes = folder.subfolders.flatMap((sub: any) => sub.notes)
+          .sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+          
+        const folderLastUpdated = allNotes.length > 0 ? allNotes[0].updatedAt : folder.updatedAt;
+        const folderPreview = allNotes.length > 0 ? allNotes[0].content.substring(0, 100) : "";
+
+        const enrichedSubfolders = folder.subfolders.map((sub: any) => {
+          const noteCount = sub.notes.length;
+          totalNotes += noteCount;
+          
+          const lastUpdated = sub.notes.length > 0 ? sub.notes[0].updatedAt : sub.updatedAt;
+          const preview = sub.notes.length > 0 ? sub.notes[0].content.substring(0, 100) : "";
+
+          return {
+            ...sub,
+            noteCount,
+            lastUpdated,
+            preview
+          };
+        });
+
+        return {
+          ...folder,
+          subfolders: enrichedSubfolders,
+          totalNotes,
+          lastUpdated: folderLastUpdated,
+          preview: folderPreview
+        };
+      });
+    };
+
+    // Seed initial 3-Space hierarchical structure if entirely empty
+    if (folders.length === 0) {
+      const defaultFolder = await db.smartFolder.create({
         data: {
-          title: 'Welcome to Smart Notes',
-          content: 'This is your new Apple Notes inspired workspace.\n\n- Write freely without limits.\n- Organize by folders like "Work", "Personal", or "Ideas".\n- Pin important notes to the top.\n- Use tags for rapid retrieval.\n\nKaiCommand automatically indexes your notes for semantic search.',
-          folder: 'Personal',
-          userId
-        }
+          name: 'Vision',
+          userId,
+          subfolders: {
+            create: [
+              {
+                name: 'Getting Started',
+                userId,
+                notes: {
+                  create: [
+                    {
+                      title: 'Welcome to Smart Notes',
+                      content: 'This is your new Apple Notes inspired workspace.\n\n- Write freely without limits.\n- Hierarchically organize by Folder -> Subfolder -> Note.\n- Automate things using AI.',
+                      userId
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        include: { subfolders: { include: { notes: true } } }
       })
-      notes.push(welcomeNote)
+      await db.smartFolder.create({ data: { name: 'Flow', userId } })
+      await db.smartFolder.create({ data: { name: 'Memory', userId } })
+      await db.smartFolder.create({ data: { name: 'planning', userId } })
+      await db.smartFolder.create({ data: { name: 'completed', userId } })
+      
+      const newHierarchy = await db.smartFolder.findMany({
+        where: { userId },
+        include: {
+          subfolders: { include: { notes: { orderBy: { updatedAt: 'desc' } } }, orderBy: { createdAt: 'asc' } }
+        },
+        orderBy: { createdAt: 'asc' }
+      })
+      return NextResponse.json({ folders: enrichHierarchy(newHierarchy), success: true })
     }
 
-    return NextResponse.json({ notes, success: true })
+    return NextResponse.json({ folders: enrichHierarchy(folders), success: true })
   } catch (error) {
-    console.error('Failed to fetch smart notes:', error)
+    console.error('Failed to fetch smart folders:', error)
     return NextResponse.json({ error: 'Failed to fetch', success: false }, { status: 500 })
   }
 }
 
+// Multiplexer POST route for Folder, Subfolder, and Note CRUD
 export async function POST(request: NextRequest) {
   const userId = await getUserId(request)
   if (!userId) {
@@ -42,42 +118,125 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const data = await request.json()
-    const { id, title, content, folder, subfolder, tags, isPinned } = data
+    const { action, payload } = await request.json()
 
-    let note;
-    if (id) {
-      // Update
-      note = await db.smartNote.update({
-        where: { id },
-        data: { title, content, folder, subfolder, tags, isPinned }
+    // 1. FOLDERS
+    if (action === 'CREATE_FOLDER') {
+      const folder = await db.smartFolder.create({
+        data: { name: payload.name || 'New Folder', userId }
       })
-    } else {
-      // Create
-      note = await db.smartNote.create({
-        data: { title, content, folder, subfolder, tags, isPinned, userId }
+      return NextResponse.json({ data: folder, success: true })
+    }
+    
+    if (action === 'RENAME_FOLDER') {
+      const folder = await db.smartFolder.update({
+        where: { id: payload.id, userId },
+        data: { name: payload.name }
       })
+      return NextResponse.json({ data: folder, success: true })
     }
 
-    // Index to semantic brain
-    try {
-      await indexKnowledgeNode({
-        userId,
-        nodeType: 'SmartNote',
-        referenceId: note.id,
-        content: `Note Title: ${note.title}\nFolder: ${note.folder}\nContent: ${note.content}`
+    // 2. SUBFOLDERS
+    if (action === 'CREATE_SUBFOLDER') {
+      const subfolder = await db.smartSubfolder.create({
+        data: { name: payload.name || 'New Subfolder', folderId: payload.folderId, userId }
       })
-    } catch (e) {
-      console.error('Failed to index SmartNote to Semantic Brain', e)
+      return NextResponse.json({ data: subfolder, success: true })
     }
 
-    return NextResponse.json({ note, success: true })
+    if (action === 'RENAME_SUBFOLDER') {
+      const subfolder = await db.smartSubfolder.update({
+        where: { id: payload.id, userId },
+        data: { name: payload.name }
+      })
+      return NextResponse.json({ data: subfolder, success: true })
+    }
+    
+    if (action === 'MOVE_SUBFOLDER') {
+      const subfolder = await db.smartSubfolder.update({
+        where: { id: payload.id, userId },
+        data: { folderId: payload.folderId }
+      })
+      return NextResponse.json({ data: subfolder, success: true })
+    }
+
+    if (action === 'RENAME_SUBFOLDER') {
+      const subfolder = await db.smartSubfolder.update({
+        where: { id: payload.id, userId },
+        data: { name: payload.name }
+      })
+      return NextResponse.json({ data: subfolder, success: true })
+    }
+
+    // 3. NOTES
+    if (action === 'CREATE_NOTE') {
+      const note = await db.smartNote.create({
+        data: { 
+          title: payload.title || 'Untitled Note', 
+          content: payload.content || '', 
+          subfolderId: payload.subfolderId, 
+          userId,
+          tags: payload.tags || "[]",
+          isPinned: payload.isPinned || false
+        }
+      })
+      
+      try {
+        await indexKnowledgeNode({
+          userId,
+          nodeType: 'SmartNote',
+          referenceId: note.id,
+          content: `Note Title: ${note.title}\nContent: ${note.content}`
+        })
+      } catch (e) {
+        console.error('Failed indexing new note')
+      }
+
+      return NextResponse.json({ data: note, success: true })
+    }
+
+    if (action === 'MOVE_NOTE') {
+      const note = await db.smartNote.update({
+        where: { id: payload.id, userId },
+        data: { subfolderId: payload.subfolderId }
+      })
+      return NextResponse.json({ data: note, success: true })
+    }
+
+    if (action === 'UPDATE_NOTE') {
+      const note = await db.smartNote.update({
+        where: { id: payload.id, userId },
+        data: { 
+          title: payload.title, 
+          content: payload.content,
+          tags: payload.tags,
+          isPinned: payload.isPinned
+        }
+      })
+
+      try {
+        await indexKnowledgeNode({
+          userId,
+          nodeType: 'SmartNote',
+          referenceId: note.id,
+          content: `Note Title: ${note.title}\nContent: ${note.content}`
+        })
+      } catch (e) {
+        console.error('Failed indexing updated note')
+      }
+
+      return NextResponse.json({ data: note, success: true })
+    }
+
+    return NextResponse.json({ error: 'Invalid action provided', success: false }, { status: 400 })
+
   } catch (error) {
-    console.error('Failed to save smart note:', error)
-    return NextResponse.json({ error: 'Failed to save', success: false }, { status: 500 })
+    console.error('Failed to process smart note action:', error)
+    return NextResponse.json({ error: 'Failed to process', success: false }, { status: 500 })
   }
 }
 
+// Delete Route (Handles Cascading Folders, Subfolders, and Notes)
 export async function DELETE(request: NextRequest) {
   const userId = await getUserId(request)
   if (!userId) {
@@ -86,17 +245,24 @@ export async function DELETE(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url)
+    const type = searchParams.get('type') // 'folder' | 'subfolder' | 'note'
     const id = searchParams.get('id')
     
-    if (!id) return NextResponse.json({ error: 'ID required', success: false }, { status: 400 })
+    if (!id || !type) return NextResponse.json({ error: 'ID and type required', success: false }, { status: 400 })
 
-    await db.smartNote.delete({
-      where: { id }
-    })
+    if (type === 'folder') {
+      await db.smartFolder.delete({ where: { id, userId } })
+    } else if (type === 'subfolder') {
+      await db.smartSubfolder.delete({ where: { id, userId } })
+    } else if (type === 'note') {
+      await db.smartNote.delete({ where: { id, userId } })
+    } else {
+      return NextResponse.json({ error: 'Invalid type provided', success: false }, { status: 400 })
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Failed to delete smart note:', error)
-    return NextResponse.json({ error: 'Failed to delete', success: false }, { status: 500 })
+    console.error('Failed to delete entity:', error)
+    return NextResponse.json({ error: 'Failed to delete entity', success: false }, { status: 500 })
   }
 }
