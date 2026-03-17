@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
         max_tokens: 500
       })
 
-      return NextResponse.json({ recommendations, success: true })
+      return NextResponse.json({ recommendations: recommendations.text || 'Unable to generate recommendations.', success: true })
     }
 
     // Create new transaction

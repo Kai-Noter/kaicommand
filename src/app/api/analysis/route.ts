@@ -105,19 +105,21 @@ export async function POST(request: NextRequest) {
       max_tokens: 500
     })
 
+    const insightsString = insights.text || 'Unable to generate insights.'
+
     // Save analysis to database
     const analysis = await db.analysis.create({
       data: {
         title: 'AI Generated Analysis',
         type: 'performance',
         data: JSON.stringify(MOCK_ANALYTICS),
-        insights,
+        insights: insightsString,
         userId
       }
     })
 
     return NextResponse.json({ 
-      insights, 
+      insights: insightsString, 
       analysis,
       success: true 
     })

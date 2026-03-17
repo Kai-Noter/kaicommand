@@ -69,7 +69,7 @@ function getResolvedThemeValue(theme: Theme): 'dark' | 'light' {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('dark')
+  const [theme, setThemeState] = useState<Theme>('auto')
   const [moodColor, setMoodColorState] = useState<MoodColor>('lime')
 
   // Subscribe to localStorage changes for syncing across tabs

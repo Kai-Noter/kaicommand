@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getUserId } from '@/lib/api-auth'
-import { generateCompletion } from '@/lib/ai'
+import { generateCompletion, ChatMessage } from '@/lib/ai'
+import { agentTools, executeAgentTool } from '@/lib/agent-tools'
 
 // System prompt: Secretary, servant, reliable friend — not a yes-person. Devil's advocate when it helps.
 const SYSTEM_PROMPT = `You are KaiCommand: an elite AI Command Center. You operate as a hybrid of a high-level Secretary, a loyal Servant, and a reliable Friend. Your objective is to manage the user’s digital life, physical health, and cognitive performance with proactive precision. You run the Command Center so they can focus on what matters. You are trusted to carry out tasks when they're not around (e.g. app updates, clearing cache, surfacing bugs, reminders) and to give honest, well-reasoned feedback — including playing devil's advocate when that would improve their decisions.
@@ -108,6 +109,16 @@ When dealing with high-stakes decisions (e.g. healthcare AI, safety, compliance)
 - Treat Documents, Projects, Finances, and the Password Vault as a unified **Data Vault** you can reason over conceptually when the user mentions them, but never reveal secrets like passwords or full card numbers in your responses.
 - Assume the experience is synced across Mac, Windows, and browser extensions. It is acceptable to phrase help as if you are aware of their multi-device workflow, while still only using information actually provided in conversation or via APIs.
 
+## Automated Legal Risk Auditing (Phase 3.1)
+- If you detect any potential legal, compliance, or regulatory risk in the user's statements, plans, or questions (especially relating to Malawian agriculture, business laws, or electrical guidelines), you MUST proactively investigate it.
+- **Step 1:** Use the \`search_web\` tool to query real-time laws or regulations.
+- **Step 2:** If a genuine risk is found, you MUST use the \`createLegalAlert\` tool to formally add the risk to the application's Legal Radar.
+- **Step 3:** Inform the user what you found and that you have added an alert to the system.
+
+## Unknowns & Admitting Failure
+- If you genuinely do not know the answer, do not have enough context, or cannot solve a problem after trying, **admit failure immediately**.
+- Do not make things up, do not hallucinate, and do not talk in circles. Say "I don't have enough data to give a confident answer" or "I am unable to resolve this," and offer what next steps the user could take to get the answer.
+
 You are the user's personal AI companion: capable, loyal, honest, and always grounded in careful reasoning.`
 
 export async function POST(request: NextRequest) {
@@ -116,7 +127,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized', success: false }, { status: 401 })
   }
   try {
-    const { message, history = [], context, voiceMode = false } = await request.json()
+    const { message, history = [], context, criticMode = false, voiceMode = false } = await request.json()
 
     if (!message) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 })
@@ -124,12 +135,14 @@ export async function POST(request: NextRequest) {
 
     // Build context-aware system prompt
     let contextPrompt = SYSTEM_PROMPT
-    if (context) {
+    if (criticMode) {
+      contextPrompt += `\n\n## URGENT OVERRIDE: FIERCE CRITIC MODE ACTIVATED\nYou are now in FIERCE CRITIC MODE. Drop the supportive tone. Your ONLY goal is to ruthlessly critique the user's ideas, identify every single logical flaw, risk, and blindspot (especially regarding their agriculture investments or business plans). Argue against them aggressively. Demand evidence and structural reasoning. Force them to defend their ideas until a bulletproof solution emerges. Do not easily agree.`
+    } else if (context) {
       contextPrompt += `\n\n## Current Context:\nThe user is currently in "${context}" mode. Tailor your responses accordingly.`
     }
 
     // Build messages array with history
-    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    const messages: ChatMessage[] = [
       {
         role: 'system',
         content: contextPrompt
@@ -138,31 +151,84 @@ export async function POST(request: NextRequest) {
         role: msg.role as 'user' | 'assistant',
         content: msg.content
       })),
-      { role: 'user' as const, content: message }
+      { role: 'user', content: message }
     ]
 
     const maxTokens = voiceMode ? 300 : 1000
     const temperature = voiceMode ? 0.6 : 0.7
 
-    let assistantMessage: string
-    try {
-      assistantMessage = await generateCompletion(messages, { temperature, max_tokens: maxTokens })
-    } catch (sdkError: unknown) {
-      const msg = sdkError instanceof Error ? sdkError.message : String(sdkError)
-      if (msg.includes('not configured')) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: msg
-          },
-          { status: 503 }
-        )
+    let assistantMessage: string = "I apologize, but I could not generate a response."
+    let toolResults: any[] = []
+
+    // Agentic Execution Loop (Max 5 turns to prevent infinite loops)
+    let iterations = 0
+    let action: { type: string; context?: string; tab?: string } | null = null
+
+    while (iterations < 5) {
+      iterations++
+      let response;
+      
+      try {
+        response = await generateCompletion(messages, { 
+          temperature, 
+          max_tokens: maxTokens,
+          tools: agentTools
+        })
+      } catch (sdkError: unknown) {
+        const msg = sdkError instanceof Error ? sdkError.message : String(sdkError)
+        if (msg.includes('not configured')) {
+          return NextResponse.json({ success: false, error: msg }, { status: 503 })
+        }
+        throw sdkError
       }
-      throw sdkError
+
+      if (response.tool_calls && response.tool_calls.length > 0) {
+        // AI decided to call a tool
+        messages.push({
+          role: 'assistant',
+          content: response.text,
+          tool_calls: response.tool_calls
+        })
+
+        for (const tc of response.tool_calls) {
+          const functionName = tc.function.name
+          const args = JSON.parse(tc.function.arguments)
+          
+          let resultStr;
+          try {
+             const result = await executeAgentTool(functionName, args, userId)
+             resultStr = JSON.stringify(result)
+             toolResults.push({ name: functionName, result })
+
+             // Capture frontend actions based on backend tool calls
+             if (functionName === 'switchWorkContext') {
+               action = { type: 'switchContext', context: args.contextType }
+             } else if (functionName === 'createFinancialTransaction') {
+               action = { type: 'navigate', tab: 'finance' }
+             } else if (functionName === 'createVoiceNote') {
+               action = { type: 'navigate', tab: 'voice-notes' }
+             }
+          } catch(e: any) {
+             console.error(`Tool Execution Error (${functionName}):`, e)
+             resultStr = JSON.stringify({ error: e.message })
+          }
+
+          messages.push({
+             role: 'tool',
+             tool_call_id: tc.id,
+             name: functionName,
+             content: resultStr
+          })
+        }
+        // Loop rewinds, feeding the tool results back to the LLM
+      } else {
+        // AI is done calling tools, final answer received
+        assistantMessage = response.text || "Action completed."
+        break
+      }
     }
 
-    // Detect if this is an action request
-    let action: { type: string; context?: string; tab?: string } | null = null
+    // Detect fallback frontend commands that don't need backend DB tools
     const lowerMessage = message.toLowerCase()
     
     if (lowerMessage.includes('switch context') || lowerMessage.includes('change context')) {
@@ -201,7 +267,7 @@ export async function POST(request: NextRequest) {
       action = { type: 'startBreathing' }
     }
 
-    // Save chat message to database
+    // Save final chat messages to database
     try {
       await db.chatMessage.create({
         data: {
@@ -225,6 +291,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       message: assistantMessage,
       action,
+      toolResults,
       success: true
     })
   } catch (error) {

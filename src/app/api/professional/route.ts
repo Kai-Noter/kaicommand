@@ -42,6 +42,18 @@ const MOCK_CONTEXTS = [
     isActive: false,
     color: '#8B5CF6',
     icon: 'code'
+  },
+  {
+    id: 'ctx-004',
+    name: 'Malawi Farm Plot A',
+    type: 'farming',
+    location: 'Mwomboshi Valley',
+    latitude: -13.9626,
+    longitude: 33.7741,
+    radius: 500,
+    isActive: false,
+    color: '#84cc16',
+    icon: 'leaf'
   }
 ]
 
@@ -374,7 +386,7 @@ export async function POST(request: NextRequest) {
     const { action, ...payload } = data
 
     // Voice note with NLP categorization
-    if (action === 'voice-note') {
+    if (action === 'create-voice-note') {
       const categorization = await generateCompletion([
         {
           role: 'system',
@@ -382,18 +394,21 @@ export async function POST(request: NextRequest) {
 1. Category: one of "patient_obs", "electrical", "code_idea", "general"
 2. Tags: 3-5 relevant tags
 3. Summary: a brief 1-sentence summary
+4. IsSmartNote: boolean (true if the transcript contains phrases like "take a note", "remember this", or strongly implies taking a permanent note)
+5. SmartNoteTitle: A concise title for the note if IsSmartNote is true
+6. SmartNoteFolder: An appropriate folder name (e.g., "Work", "Ideas", "Personal")
 
-Return JSON: { "category": "...", "tags": [...], "summary": "..." }`
+Return JSON: { "category": "...", "tags": [...], "summary": "...", "isSmartNote": false, "smartNoteTitle": "...", "smartNoteFolder": "..." }`
         },
         { role: 'user', content: payload.transcript }
       ], {
         temperature: 0.3,
-        max_tokens: 200
+        max_tokens: 250
       })
 
-      let nlpResult = { category: 'general', tags: [], summary: '' }
+      let nlpResult = { category: 'general', tags: [], summary: '', isSmartNote: false, smartNoteTitle: 'Voice Note', smartNoteFolder: 'Voice Notes' }
       try {
-        nlpResult = JSON.parse(categorization || '{}')
+        nlpResult = JSON.parse(categorization.text || '{}')
       } catch (e) {
         console.error('Failed to parse NLP result')
       }
@@ -406,6 +421,7 @@ Return JSON: { "category": "...", "tags": [...], "summary": "..." }`
             nlpResult.category === 'electrical' ? 'electrical' :
               nlpResult.category === 'code_idea' ? 'development' : null,
           duration: payload.duration,
+          audioUrl: payload.audioUrl,
           tags: JSON.stringify(nlpResult.tags),
           processed: true,
           summary: nlpResult.summary,
@@ -413,7 +429,7 @@ Return JSON: { "category": "...", "tags": [...], "summary": "..." }`
         }
       })
 
-      // Hook into the Semantic Brain
+      // Hook into the Semantic Brain for Voice Note
       try {
         await indexKnowledgeNode({
           userId,
@@ -423,6 +439,30 @@ Return JSON: { "category": "...", "tags": [...], "summary": "..." }`
         })
       } catch (embErr) {
         console.error('Failed to index VoiceNote:', embErr)
+      }
+
+      // Automatically create a Smart Note if triggered
+      if (nlpResult.isSmartNote) {
+         try {
+           const smartNote = await db.smartNote.create({
+             data: {
+               title: nlpResult.smartNoteTitle || 'Voice Note',
+               content: payload.transcript + (nlpResult.summary ? `\n\n**AI Summary:** ${nlpResult.summary}` : ''),
+               folder: nlpResult.smartNoteFolder || 'Voice Notes',
+               userId
+             }
+           })
+
+           // Index the new Smart Note to the knowledge graph
+           await indexKnowledgeNode({
+             userId,
+             nodeType: 'SmartNote',
+             referenceId: smartNote.id,
+             content: `Smart Note Title: ${smartNote.title}\nContent: ${smartNote.content}`
+           })
+         } catch (snErr) {
+           console.error("Failed to create associated Smart Note:", snErr)
+         }
       }
 
       return NextResponse.json({ note, nlpResult, success: true })
@@ -496,7 +536,7 @@ Return JSON: { "affectedProjects": [{ "name": "...", "delay": "X hours/days", "r
 
       let projectImpact = {}
       try {
-        projectImpact = JSON.parse(impactAnalysis || '{}')
+        projectImpact = JSON.parse(impactAnalysis.text || '{}')
       } catch (e) { }
 
       const shift = await db.shift.create({
@@ -610,5 +650,29 @@ export async function PUT(request: NextRequest) {
       { error: 'Failed to update', success: false },
       { status: 500 }
     )
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const userId = await getUserId(request)
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized', success: false }, { status: 401 })
+  }
+  try {
+    const searchParams = request.nextUrl.searchParams
+    const type = searchParams.get('type')
+    const id = searchParams.get('id')
+    
+    if (type === 'voice-note' && id) {
+      await db.voiceNote.delete({
+        where: { id, userId }
+      })
+      return NextResponse.json({ success: true })
+    }
+    
+    return NextResponse.json({ error: 'Unknown delete type', success: false }, { status: 400 })
+  } catch (error) {
+    console.error('Failed to delete:', error)
+    return NextResponse.json({ error: 'Failed to delete', success: false }, { status: 500 })
   }
 }

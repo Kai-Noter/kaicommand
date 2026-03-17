@@ -1,25 +1,13 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
-
-interface CertificationType {
-  id: string
-  name: string
-  type: string
-  licenseNumber: string | null
-  issueDate: Date | null
-  expiryDate: Date | null
-  status: string
-  cpdHours: number
-  requiredHours: number | null
-}
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Award, ExternalLink, ShieldCheck } from 'lucide-react'
 
 interface CertificationsViewProps {
-  certifications: CertificationType[]
-  formatDate: (date: Date | string | null) => string
+  certifications?: any[]
+  formatDate?: (date: Date | string | null) => string
 }
 
 export function CertificationsView({ certifications, formatDate }: CertificationsViewProps) {
@@ -29,45 +17,41 @@ export function CertificationsView({ certifications, formatDate }: Certification
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="space-y-6"
+      className="max-w-3xl mx-auto flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6 px-4"
     >
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-2xl font-bold">Certifications & Compliance</h3>
-          <p className="text-muted-foreground">Track licenses and CPD hours</p>
-        </div>
+      <div className="p-6 bg-emerald-500/10 rounded-full border border-emerald-500/20 shadow-lg shadow-emerald-500/5">
+        <ShieldCheck className="w-16 h-16 text-emerald-500" />
+      </div>
+      <div>
+        <h3 className="text-3xl font-bold tracking-tight mb-3">Certifications & Compliance</h3>
+        <p className="text-muted-foreground text-lg max-w-lg mx-auto leading-relaxed">
+          Manage your licenses, professional development hours, and compliance documents in our dedicated secure portal.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {certifications.map((cert) => {
-          const daysUntilExpiry = cert.expiryDate
-            ? Math.ceil((new Date(cert.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-            : null
-          const isExpiringSoon = daysUntilExpiry !== null && daysUntilExpiry < 90
-
-          return (
-            <Card key={cert.id} className={`glass-card ${isExpiringSoon ? 'border-amber-500/50' : ''}`}>
-              <CardHeader className="pb-2">
-                <Badge className={cert.type === 'electrical' ? 'bg-amber-500/20 text-amber-400' :
-                  cert.type === 'healthcare' ? 'bg-emerald-500/20 text-emerald-400' :
-                    'bg-purple-500/20 text-purple-400'
-                }>
-                  {cert.type}
-                </Badge>
-              </CardHeader>
-              <CardContent>
-                <CardTitle className="text-sm">{cert.name}</CardTitle>
-                <div className="mt-2 text-xs text-muted-foreground">
-                  Expires: {cert.expiryDate ? formatDate(cert.expiryDate) : 'N/A'}
-                </div>
-                {cert.requiredHours && cert.requiredHours > 0 && (
-                  <Progress value={(cert.cpdHours / cert.requiredHours) * 100} className="h-1 mt-2" />
-                )}
-              </CardContent>
-            </Card>
-          )
-        })}
-      </div>
+      <Card className="glass-card w-full max-w-md border-emerald-500/30 shadow-2xl mt-8">
+        <CardHeader>
+          <CardTitle className="flex flex-col items-center gap-3 mt-4">
+            <Award className="w-8 h-8 text-emerald-400" />
+            Compliance Center
+          </CardTitle>
+          <CardDescription className="text-sm mt-2">
+            Secure tracking for Malawi agriculture, development, and electrical certifications.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4 pb-8">
+          <Button 
+            className="w-full bg-emerald-500 hover:bg-emerald-600 text-white shadow-md text-base h-12"
+            onClick={() => window.open('https://kaicommand.com/compliance', '_blank')}
+          >
+            Open Compliance Portal
+            <ExternalLink className="w-4 h-4 ml-2" />
+          </Button>
+          <p className="text-xs text-muted-foreground border-t border-border/50 pt-4 mt-2">
+            This module has been separated for enhanced security and specialized audit logging.
+          </p>
+        </CardContent>
+      </Card>
     </motion.div>
   )
 }

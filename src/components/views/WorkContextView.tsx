@@ -3,13 +3,14 @@
 import { motion } from 'framer-motion'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { MapPin, Briefcase, HeartPulse, Zap, Code } from 'lucide-react'
+import { MapPin, Briefcase, HeartPulse, Zap, Code, Leaf } from 'lucide-react'
 
 // Map of icons to render depending on context type
 const CONTEXT_ICONS: Record<string, any> = {
   healthcare: HeartPulse,
   electrical: Zap,
-  development: Code
+  development: Code,
+  farming: Leaf
 }
 
 interface WorkContextViewProps {

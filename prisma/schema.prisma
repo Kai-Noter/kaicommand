@@ -46,6 +46,17 @@ model User {
   
   // Knowledge Graph nodes
   knowledgeNodes      KnowledgeNode[]
+
+  // Life & Business Graph
+  persons             Person[]
+  businesses          Business[]
+  interactions        Interaction[]
+
+  // Smart Notes
+  smartNotes          SmartNote[]
+
+  // Legal Radar
+  legalAlerts         LegalAlert[]
 }
 
 model AuditLog {
@@ -408,6 +419,83 @@ model ClientLog {
   @@index([context])
 }
 
+// === LIFE & BUSINESS GRAPH ===
+
+model Person {
+  id          String   @id @default(cuid())
+  firstName   String
+  lastName    String?
+  email       String?
+  phone       String?
+  role        String?  // e.g. "Farm Manager", "Supplier", "Lawyer"
+  company     String?
+  location    String?  // e.g. "Lilongwe, Malawi"
+  notes       String?
+  tags        String   @default("[]") // JSON array
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  businessId  String?
+  business    Business? @relation(fields: [businessId], references: [id])
+  
+  interactions Interaction[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([businessId])
+}
+
+model Business {
+  id          String   @id @default(cuid())
+  name        String
+  industry    String?  // e.g. "Agriculture", "Logistics", "Legal"
+  location    String?  // e.g. "Mzuzu, Malawi"
+  website     String?
+  status      String   @default("active") // active, prospecting, inactive
+  notes       String?
+  tags        String   @default("[]") // JSON array
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  employees   Person[]
+  interactions Interaction[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([industry])
+}
+
+model Interaction {
+  id          String   @id @default(cuid())
+  type        String   // "meeting", "call", "email", "note"
+  date        DateTime @default(now())
+  summary     String
+  sentiment   String   @default("neutral") // positive, neutral, negative
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  personId    String?
+  person      Person?   @relation(fields: [personId], references: [id], onDelete: Cascade)
+  
+  businessId  String?
+  business    Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([personId])
+  @@index([businessId])
+  @@index([date])
+}
+
 // === KNOWLEDGE GRAPH & SECOND BRAIN ===
 
 model KnowledgeNode {
@@ -442,4 +530,47 @@ model KnowledgeEdge {
   @@index([sourceNodeId])
   @@index([targetNodeId])
   @@unique([sourceNodeId, targetNodeId, relationType])
+}
+
+// === SMART NOTES ===
+// Apple Notes / Evernote style rich documents
+model SmartNote {
+  id          String   @id @default(cuid())
+  title       String
+  content     String   // Markdown or HTML
+  folder      String   @default("Notes")
+  subfolder   String?
+  tags        String   @default("[]") // JSON array
+  isPinned    Boolean  @default(false)
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([folder])
+}
+
+// === LEGAL RADAR ===
+// Real-time compliance and risk tracking
+model LegalAlert {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  severity    String   @default("low") // low, medium, high, critical
+  sourceUrl   String?  // Reference link from web search
+  relatedNodes String  @default("[]")  // JSON array of KnowledgeNode IDs this relates to
+  status      String   @default("unread") // unread, acknowledged, resolved
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([severity])
+  @@index([status])
 }

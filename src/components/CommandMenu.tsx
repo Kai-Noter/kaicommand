@@ -119,7 +119,7 @@ export function CommandMenu() {
     <>
       <button 
         onClick={() => setOpen(true)}
-        className="fixed bottom-4 right-4 z-50 rounded-full p-4 bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 hover:scale-105 transition-all outline-none"
+        className="fixed bottom-24 right-6 z-50 rounded-full p-4 bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 hover:scale-105 transition-all outline-none"
         aria-label="Search Second Brain"
         title="Cmd+K to search"
       >

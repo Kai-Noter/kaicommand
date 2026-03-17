@@ -63,6 +63,7 @@ import {
   Brain,
   Check,
   RotateCcw,
+  Flame,
   // AI Assistant icons
   MessageCircle,
   Headphones,
@@ -91,7 +92,11 @@ import {
   Trash,
   PlusCircle,
   CheckSquare,
-  UserPlus
+  UserPlus,
+  Phone,
+  Leaf,
+  FileText,
+  Scale
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
@@ -102,7 +107,6 @@ import {
   DashboardView,
   WorkContextView,
   VoiceNotesView,
-  InventoryView,
   CertificationsView,
   EmergencyView,
   AppManagerView,
@@ -111,6 +115,9 @@ import {
   PasswordVaultView,
   SettingsView
 } from '@/components/views'
+import { LifeManagerView } from '@/components/views/LifeManagerView'
+import { SmartNotesView } from '@/components/views/SmartNotesView'
+import { LegalRadarView } from '@/components/views/LegalRadarView'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
@@ -148,6 +155,7 @@ import {
   useDigest,
 } from '@/hooks/use-api'
 import { toast } from '@/hooks/use-toast'
+import { PromptStudioView } from '@/components/PromptStudioView'
 
 // Types
 type AppType = {
@@ -203,6 +211,7 @@ type ChatMessageType = {
   role: string
   content: string
   createdAt?: Date
+  toolResults?: any[]
 }
 
 // Professional Context Types
@@ -292,11 +301,14 @@ type PasswordEntryType = {
 
 const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'prompt-studio', label: 'Prompt Studio', icon: Wand2 },
   { id: 'context', label: 'Work Context', icon: MapPin },
+  { id: 'legal-radar', label: 'Legal Radar', icon: Scale },
   { id: 'voice-notes', label: 'Voice Notes', icon: Mic },
-  { id: 'inventory', label: 'Inventory', icon: Package },
+  { id: 'smart-notes', label: 'Smart Notes', icon: FileText },
   { id: 'certifications', label: 'Certifications', icon: Award },
   { id: 'emergency', label: 'Emergency', icon: Siren },
+  { id: 'network', label: 'Life Manager', icon: UserPlus },
   { id: 'apps', label: 'App Manager', icon: AppWindow },
   { id: 'emails', label: 'Email Hub', icon: Mail },
   { id: 'finance', label: 'Finance', icon: DollarSign },
@@ -307,6 +319,7 @@ const navItems = [
 // Mobile bottom navigation (most used items)
 const mobileNavItems = [
   { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
+  { id: 'prompt-studio', label: 'Prompts', icon: Wand2 },
   { id: 'apps', label: 'Apps', icon: AppWindow },
   { id: 'passwords', label: 'Vault', icon: ShieldCheck },
   { id: 'settings', label: 'Settings', icon: Settings }
@@ -316,13 +329,15 @@ const mobileNavItems = [
 const CONTEXT_COLORS: Record<string, string> = {
   healthcare: 'bg-emerald-500',
   electrical: 'bg-amber-500',
-  development: 'bg-purple-500'
+  development: 'bg-purple-500',
+  farming: 'bg-lime-500'
 }
 
 const CONTEXT_ICONS: Record<string, any> = {
   healthcare: HeartPulse,
   electrical: Zap,
-  development: Code
+  development: Code,
+  farming: Leaf
 }
 
 // Chart colors
@@ -342,7 +357,7 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
-  const [currentTime, setCurrentTime] = useState(new Date())
+  const [currentTime, setCurrentTime] = useState<Date | null>(null)
   
   // Mobile detection
   const [isMobile, setIsMobile] = useState(false)
@@ -390,7 +405,9 @@ export default function Home() {
         phone: ''
       }
       if (active) {
-        setUserProfile(updatedProfile)
+        setTimeout(() => {
+          setUserProfile(updatedProfile)
+        }, 0)
       }
     }
     return () => { active = false }
@@ -417,7 +434,7 @@ export default function Home() {
   // Professional data states
   const [workContexts, setWorkContexts] = useState<WorkContextType[]>([])
   const [voiceNotes, setVoiceNotes] = useState<VoiceNoteType[]>([])
-  const [inventory, setInventory] = useState<InventoryItemType[]>([])
+  const [smartNotes, setSmartNotes] = useState<any[]>([])
   const [certifications, setCertifications] = useState<CertificationType[]>([])
   const [emergencyProtocols, setEmergencyProtocols] = useState<EmergencyProtocolType[]>([])
   const [codeSnippets, setCodeSnippets] = useState<CodeSnippetType[]>([])
@@ -430,10 +447,16 @@ export default function Home() {
   const [aiModalOpen, setAiModalOpen] = useState(false)
   const [aiExpanded, setAiExpanded] = useState(false)
   const [aiInput, setAiInput] = useState('')
-  const [aiMessages, setAiMessages] = useState<Array<{ role: string; content: string; timestamp: Date }>>([])
+  const [aiMessages, setAiMessages] = useState<Array<{ role: string; content: string; timestamp: Date; toolResults?: any[] }>>([])
   const [aiLoading, setAiLoading] = useState(false)
+  const [criticMode, setCriticMode] = useState(false)
+  const [mindMapOpen, setMindMapOpen] = useState(false)
+  const [selectedMindMapMsg, setSelectedMindMapMsg] = useState<ChatMessageType | null>(null)
   const [isListening, setIsListening] = useState(false)
   const [speechSupported, setSpeechSupported] = useState(false)
+  const [phoneMode, setPhoneMode] = useState(false)
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([])
+  const [selectedVoice, setSelectedVoice] = useState<string>('')
   const [copiedMessage, setCopiedMessage] = useState<string | null>(null)
   const aiInputRef = useRef<HTMLInputElement>(null)
   const aiMessagesEndRef = useRef<HTMLDivElement>(null)
@@ -469,6 +492,7 @@ export default function Home() {
     password: '',
     confirmPassword: ''
   })
+  const [passwordChangeOpen, setPasswordChangeOpen] = useState(false)
 
   // Digest for dashboard (while you were away + suggestions)
   const { data: digest } = useDigest(activeTab === 'dashboard')
@@ -480,17 +504,36 @@ export default function Home() {
     { icon: Brain, text: "Start a brain training session", category: "wellness" },
     { icon: DollarSign, text: "How's my budget looking?", category: "finance" },
     { icon: Briefcase, text: "Switch to work context", category: "context" },
+    { icon: Scale, text: "Check legal compliance for Malawian agriculture", category: "legal" },
     { icon: HelpCircle, text: "What's my current context?", category: "context" },
     { icon: MessageCircle, text: "Argue the other side of my last message", category: "devil_advocate" },
   ]
 
-  // Speech recognition setup (moved setState to a safe async delay to avoid cascading renders in concurrent react features if any)
+  // Speech recognition & TTS setup
   useEffect(() => {
     let active = true
     if (typeof window !== 'undefined') {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
       if (SpeechRecognition && active) {
         Promise.resolve().then(() => setSpeechSupported(true))
+      }
+
+      // Load human-like voices for TTS
+      const loadVoices = () => {
+        const voices = window.speechSynthesis.getVoices()
+        if (active) {
+          setAvailableVoices(voices)
+          if (voices.length > 0) {
+            // Find a good english voice (like Apple's Daniel/Samantha or Google's default)
+            const preferred = voices.find(v => v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Google US English'))
+            const defaultVoice = preferred || voices.find(v => v.lang.startsWith('en')) || voices[0]
+            setSelectedVoice(defaultVoice.name)
+          }
+        }
+      }
+      if ('speechSynthesis' in window) {
+        loadVoices()
+        window.speechSynthesis.onvoiceschanged = loadVoices
       }
     }
     return () => { active = false }
@@ -513,8 +556,9 @@ export default function Home() {
     aiMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [aiMessages])
 
-  // Update time every second
+  // Hydration-safe clock
   useEffect(() => {
+    setCurrentTime(new Date())
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
@@ -590,7 +634,24 @@ export default function Home() {
     fetchContexts()
   }, [])
 
-  const professionalTabs = ['context', 'voice-notes', 'inventory', 'certifications', 'emergency']
+  // Smart Notes fetch logic
+  useEffect(() => {
+    if (activeTab !== 'smart-notes') return
+    const fetchNotes = async () => {
+      try {
+        const res = await fetch('/api/smart-notes')
+        const data = await res.json()
+        if (data.success) {
+          setSmartNotes(data.notes || [])
+        }
+      } catch (error) {
+        console.error('Failed to fetch smart notes:', error)
+      }
+    }
+    fetchNotes()
+  }, [activeTab])
+
+  const professionalTabs = ['context', 'voice-notes', 'certifications', 'emergency']
   useEffect(() => {
     if (!professionalTabs.includes(activeTab)) return
     const fetchProfessional = async () => {
@@ -600,7 +661,6 @@ export default function Home() {
         if (professionalData.success) {
           setWorkContexts(professionalData.contexts || [])
           setVoiceNotes(professionalData.voiceNotes || [])
-          setInventory(professionalData.inventory || [])
           setCertifications(professionalData.certifications || [])
           setEmergencyProtocols(professionalData.protocols || [])
           setCodeSnippets(professionalData.snippets || [])
@@ -726,21 +786,44 @@ export default function Home() {
         setCurrentContext(data.context.type)
       }
     } catch (error) {
-      console.error('Failed to switch context:', error)
+        console.error('Failed to switch context:', error)
     }
   }
 
   // Submit voice note
-  // Submit voice note
-  const submitVoiceNoteParent = async (text: string) => {
-    // Basic optimistic update logic from before but adapted for passing text
-    const newNote = {
-      id: Date.now().toString(),
-      transcript: text,
-      category: 'general',
-      createdAt: new Date()
-    } as any // simple any cast to bypass type errors during this stage
-    setVoiceNotes([newNote, ...voiceNotes])
+  const submitVoiceNoteParent = async (text: string, audioUrl?: string) => {
+    try {
+      const res = await fetch('/api/professional', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create-voice-note',
+          transcript: text,
+          audioUrl,
+          duration: 0
+        })
+      })
+      const data = await res.json()
+      if (data.success && data.note) {
+        setVoiceNotes([data.note, ...voiceNotes])
+        // If it also created a smart note, optimally we re-fetch them or we just rely on activeTab to re-fetch
+      }
+    } catch (err) {
+      console.error('Failed to submit voice note:', err)
+    }
+  }
+
+  const deleteVoiceNoteParent = async (id: string) => {
+    try {
+      const res = await fetch(`/api/professional?type=voice-note&id=${id}`, {
+        method: 'DELETE'
+      })
+      if (res.ok) {
+        setVoiceNotes(prev => prev.filter(n => n.id !== id))
+      }
+    } catch (error) {
+      console.error('Failed to delete voice note', error)
+    }
   }
 
   // Log energy
@@ -779,6 +862,7 @@ export default function Home() {
           message: text,
           history: aiMessages,
           context: currentContext,
+          criticMode,
           voiceMode: false
         })
       })
@@ -788,9 +872,25 @@ export default function Home() {
         const assistantMessage = {
           role: 'assistant',
           content: data.message,
-          timestamp: new Date()
+          timestamp: new Date(),
+          toolResults: data.toolResults
         }
         setAiMessages(prev => [...prev, assistantMessage])
+
+        // Phone Mode: Text-to-Speech
+        if (phoneMode && 'speechSynthesis' in window) {
+          const utterance = new SpeechSynthesisUtterance(data.message)
+          const voice = availableVoices.find(v => v.name === selectedVoice)
+          if (voice) utterance.voice = voice
+          
+          utterance.onend = () => {
+             // If still in phone mode after speaking, start listening again
+             if (phoneMode) {
+               startVoiceInput()
+             }
+          }
+          window.speechSynthesis.speak(utterance)
+        }
 
         // Handle actions
         if (data.action) {
@@ -1111,38 +1211,45 @@ export default function Home() {
           </nav>
         </div>
 
-        <div className="absolute bottom-4 left-4 right-4 hidden md:block">
-          <Card
-            className={`glass-card ${!isLoggedIn ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
-            role={!isLoggedIn ? 'button' : undefined}
-            onClick={!isLoggedIn ? () => { setSignInError(null); setSignInOpen(true) } : undefined}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <Avatar className="w-10 h-10">
-                  <AvatarImage src={profileImage} />
-                  <AvatarFallback className="bg-gradient-to-br from-sky-500 to-cyan-500 text-white text-xs">
-                    {isLoggedIn && userProfile.firstName 
-                      ? `${userProfile.firstName.charAt(0)}${userProfile.lastName.charAt(0)}`.toUpperCase()
-                      : '?'}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate">
-                    {isLoggedIn && userProfile.firstName 
-                      ? `${userProfile.firstName} ${userProfile.lastName}`.trim()
-                      : 'Guest'}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {isLoggedIn && userProfile.email ? userProfile.email : 'Not signed in'}
-                  </p>
-                  {!isLoggedIn && (
-                    <p className="text-xs text-lime-500 mt-0.5">Tap to sign in</p>
-                  )}
+        <div className="absolute bottom-4 left-4 right-4 hidden md:block z-50">
+          {isLoggedIn ? (
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <Avatar className="w-10 h-10">
+                    <AvatarImage src={profileImage} />
+                    <AvatarFallback className="bg-gradient-to-br from-primary to-blue-500 text-white text-xs">
+                      {userProfile.firstName ? `${userProfile.firstName.charAt(0)}${userProfile.lastName.charAt(0)}`.toUpperCase() : '?'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm text-foreground truncate">
+                      {userProfile.firstName ? `${userProfile.firstName} ${userProfile.lastName}`.trim() : 'Guest'}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {userProfile.email}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="flex flex-col gap-2 p-3 bg-card/50 backdrop-blur-md rounded-xl border border-border/50">
+              <Button 
+                onClick={() => { setSignInError(null); setSignInOpen(true) }} 
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
+              >
+                <LogIn className="w-4 h-4 mr-2" /> Sign In
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => setSignUpOpen(true)} 
+                className="w-full bg-background hover:bg-accent border-border/50 text-foreground transition-colors"
+              >
+                <UserPlus className="w-4 h-4 mr-2" /> Create Account
+              </Button>
+            </div>
+          )}
         </div>
       </motion.aside>
 
@@ -1172,19 +1279,18 @@ export default function Home() {
                   {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
                 </Button>
               )}
-              <div>
-                <h2 className="text-lg md:text-xl font-bold">
-                  {isMobile ? (
-                    navItems.find(n => n.id === activeTab)?.label || 'Dashboard'
-                  ) : (
+              <div className="flex flex-col">
+                <h2 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+                  {currentTime ? (
                     <>Good {currentTime.getHours() < 12 ? 'Morning' : currentTime.getHours() < 18 ? 'Afternoon' : 'Evening'}!</>
+                  ) : (
+                    <>Welcome!</>
                   )}
                 </h2>
-                <p className="text-xs md:text-sm text-muted-foreground hidden sm:block">
-                  {currentTime.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                  <span className="ml-2 text-sky-500">
-                    {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+                <p className="text-muted-foreground font-medium text-sm flex items-center gap-2 mt-1">
+                  {currentTime ? currentTime.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : ''}
+                  <span className="w-1 h-1 rounded-full bg-border" />
+                  {currentTime ? currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}
                 </p>
               </div>
             </div>
@@ -1249,18 +1355,48 @@ export default function Home() {
                 switchContext={switchContext}
               />
             )}
+            
+            {/* Legal Radar Tab */}
+            {activeTab === 'legal-radar' && (
+              <LegalRadarView alerts={[]} />
+            )}
 
             {/* Voice Notes Tab */}
             {activeTab === 'voice-notes' && (
               <VoiceNotesView
                 voiceNotes={voiceNotes}
                 submitVoiceNoteParent={submitVoiceNoteParent}
+                deleteVoiceNoteParent={deleteVoiceNoteParent}
               />
             )}
 
-            {/* Inventory Tab */}
-            {activeTab === 'inventory' && (
-              <InventoryView inventory={inventory} />
+            {/* Smart Notes Tab */}
+            {activeTab === 'smart-notes' && (
+              <SmartNotesView 
+                notes={smartNotes} 
+                onSaveNote={async (note) => {
+                  const res = await fetch('/api/smart-notes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(note)
+                  })
+                  const data = await res.json()
+                  if (data.success) {
+                    setSmartNotes(prev => {
+                      const exists = prev.find(n => n.id === data.note.id)
+                      if (exists) return prev.map(n => n.id === data.note.id ? data.note : n)
+                      return [data.note, ...prev]
+                    })
+                    return data.note
+                  }
+                }}
+                onDeleteNote={async (id) => {
+                  const res = await fetch(`/api/smart-notes?id=${id}`, { method: 'DELETE' })
+                  if (res.ok) {
+                    setSmartNotes(prev => prev.filter(n => n.id !== id))
+                  }
+                }}
+              />
             )}
 
             {/* Certifications Tab */}
@@ -1275,6 +1411,11 @@ export default function Home() {
                 setSelectedProtocol={setSelectedProtocol}
                 setEmergencyModalOpen={setEmergencyModalOpen}
               />
+            )}
+
+            {/* Life Manager (Network) Tab */}
+            {activeTab === 'network' && (
+              <LifeManagerView />
             )}
 
             {/* App Manager Tab */}
@@ -1316,6 +1457,11 @@ export default function Home() {
                 addPasswordEntry={addPasswordEntryAction}
                 deletePasswordEntry={deletePasswordEntry}
               />
+            )}
+
+            {/* Prompt Studio Tab */}
+            {activeTab === 'prompt-studio' && (
+              <PromptStudioView />
             )}
 
             {/* Settings Tab */}
@@ -1444,6 +1590,20 @@ export default function Home() {
                             <span className="text-xs capitalize">{t}</span>
                           </button>
                         ))}
+                      </div>
+                      
+                      {/* Voice Selection */}
+                      <div className="pt-4 mt-2 border-t border-border/50">
+                        <Label className="text-xs mb-2 block">AI Voice (Phone Mode)</Label>
+                        <select 
+                          className="w-full bg-background border border-border/50 rounded-md p-2 text-sm focus:ring-lime-500 outline-none"
+                          value={selectedVoice}
+                          onChange={(e) => setSelectedVoice(e.target.value)}
+                        >
+                          {availableVoices.map(v => (
+                            <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
+                          ))}
+                        </select>
                       </div>
                     </CardContent>
                   </Card>
@@ -1623,17 +1783,56 @@ export default function Home() {
                       <CardDescription>Keep your account secure</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 dark:bg-white/5 border border-border/50">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-emerald-500/20">
-                            <Lock className="w-4 h-4 text-emerald-500" />
+                      <div className="flex flex-col gap-3 p-3 rounded-lg bg-white/5 dark:bg-white/5 border border-border/50 transition-all">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-emerald-500/20">
+                              <Lock className="w-4 h-4 text-emerald-500" />
+                            </div>
+                            <div>
+                              <p className="font-medium text-sm">Password</p>
+                              <p className="text-xs text-muted-foreground">Keep your account secure</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-medium text-sm">Password</p>
-                            <p className="text-xs text-muted-foreground">Last changed 30 days ago</p>
-                          </div>
+                          <Button variant="outline" size="sm" onClick={() => setPasswordChangeOpen(!passwordChangeOpen)}>
+                            {passwordChangeOpen ? 'Cancel' : 'Change'}
+                          </Button>
                         </div>
-                        <Button variant="outline" size="sm">Change</Button>
+                        
+                        <AnimatePresence>
+                          {passwordChangeOpen && (
+                            <motion.div 
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="space-y-3 pt-3 border-t border-border/50">
+                                <div>
+                                  <Label className="text-xs">Current Password</Label>
+                                  <Input type="password" placeholder="••••••••" className="mt-1" />
+                                </div>
+                                <div>
+                                  <Label className="text-xs">New Password</Label>
+                                  <Input type="password" placeholder="••••••••" className="mt-1" />
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Confirm New Password</Label>
+                                  <Input type="password" placeholder="••••••••" className="mt-1" />
+                                </div>
+                                <Button 
+                                  className="w-full bg-emerald-500 hover:bg-emerald-600 text-white mt-2" 
+                                  onClick={() => {
+                                    // Visual success feedback
+                                    setPasswordChangeOpen(false)
+                                  }}
+                                >
+                                  Update Password
+                                </Button>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
                       <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 dark:bg-white/5 border border-border/50">
                         <div className="flex items-center gap-3">
@@ -1995,6 +2194,19 @@ export default function Home() {
                                 : 'bg-white/5 rounded-tl-sm'
                             }`}>
                               <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                              
+                              {/* Agentic Execution UI Indicators */}
+                              {msg.toolResults && msg.toolResults.length > 0 && (
+                                <div className="mt-2 flex flex-col gap-1.5 border-t border-white/10 pt-2">
+                                  {msg.toolResults.map((tr: any, idx: number) => (
+                                    <div key={idx} className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 text-[10px] px-2.5 py-1 rounded w-fit border border-emerald-500/20 shadow-sm backdrop-blur-md">
+                                      <Zap className="w-3 h-3 text-amber-400 fill-amber-400/20" />
+                                      <span className="font-mono tracking-tight uppercase">EXEC: {tr.name.replace(/([A-Z])/g, ' $1').trim()}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
                               <div className="flex items-center gap-2 mt-1">
                                 <span className="text-[10px] text-muted-foreground">
                                   {msg.timestamp.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
@@ -2013,9 +2225,24 @@ export default function Home() {
                                     )}
                                   </Button>
                                 )}
+                                {msg.role === 'assistant' && msg.toolResults && msg.toolResults.length > 0 && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-4 w-4 opacity-0 hover:opacity-100 transition-opacity text-purple-400 ml-1"
+                                    title="View Thought Process"
+                                    onClick={() => {
+                                      setSelectedMindMapMsg(msg)
+                                      setMindMapOpen(true)
+                                    }}
+                                  >
+                                    <Brain className="w-3 h-3" />
+                                  </Button>
+                                )}
                               </div>
                             </div>
                           </div>
+
                         </motion.div>
                       ))}
                       {aiLoading && (
@@ -2055,6 +2282,33 @@ export default function Home() {
               {/* Input Area */}
               <CardFooter className="pt-3 border-t border-border/50">
                 <div className="flex items-center gap-2 w-full">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={`shrink-0 transition-colors ${criticMode ? 'text-orange-500 bg-orange-500/10' : 'text-muted-foreground'}`}
+                    onClick={() => setCriticMode(!criticMode)}
+                    title={criticMode ? "Fierce Critic Mode: ON" : "Enable Critic Mode"}
+                  >
+                    <Flame className="w-5 h-5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={`shrink-0 transition-colors ${phoneMode ? 'text-lime-500 bg-lime-500/10 animate-pulse' : 'text-muted-foreground'}`}
+                    onClick={() => {
+                      setPhoneMode(!phoneMode)
+                      if (!phoneMode) {
+                        toast({ title: "Phone Mode On", description: "KaiCommand will speak responses and listen continuously." })
+                        startVoiceInput()
+                      } else {
+                        window.speechSynthesis.cancel()
+                      }
+                    }}
+                    title={phoneMode ? "Phone Mode: ON" : "Enable Phone Mode"}
+                  >
+                    <Phone className="w-5 h-5" />
+                  </Button>
                   {speechSupported && (
                     <Button
                       variant="ghost"
@@ -2196,6 +2450,82 @@ export default function Home() {
           </div>
         </motion.nav>
       )}
+
+      {/* Mind Map Decision Flow Modal */}
+      <Dialog open={mindMapOpen} onOpenChange={setMindMapOpen}>
+        <DialogContent className="sm:max-w-[600px] border-white/10 bg-background/95 backdrop-blur-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Brain className="w-5 h-5 text-purple-400" />
+              Thought Process & Executions
+            </DialogTitle>
+            <DialogDescription>
+              A visual flow of how KaiCommand arrived at this response.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-6 flex flex-col items-center justify-center space-y-6">
+            
+            {/* 1. Context Trigger */}
+            <div className="flex flex-col items-center w-full">
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4 w-full flex items-center gap-4">
+                <div className="p-3 rounded-full bg-blue-500/20 text-blue-400">
+                  <User className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium text-white">Input Received & Context Loaded</h4>
+                  <p className="text-xs text-muted-foreground line-clamp-2">System aligned with current work mode ({currentContext}) and processed prompt.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="w-px h-6 bg-gradient-to-b from-white/10 to-purple-500/50" />
+
+            {/* 2. Reasoning Loop */}
+            <div className="flex flex-col items-center w-full">
+              <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-4 w-full relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1 h-full bg-purple-500" />
+                <h4 className="text-sm font-medium text-white flex items-center gap-2 mb-3">
+                  <Wand2 className="w-4 h-4 text-purple-400" />
+                  Agent Execution Loop
+                </h4>
+                
+                <div className="space-y-3 pl-2 border-l-2 border-white/5 ml-2">
+                  {selectedMindMapMsg?.toolResults?.map((tr, idx) => (
+                    <div key={idx} className="relative pl-4">
+                      <div className="absolute left-[-5px] top-2 w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
+                      <div className="bg-black/20 rounded border border-white/5 p-2 text-xs backdrop-blur-sm">
+                        <span className="text-emerald-400 font-mono font-semibold">TRIGGER: {tr.name}</span>
+                        <div className="mt-1 text-muted-foreground truncate opacity-90 font-mono text-[10px]">
+                          Result: {JSON.stringify(tr.result).substring(0, 100)}...
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {(!selectedMindMapMsg?.toolResults || selectedMindMapMsg.toolResults.length === 0) && (
+                    <div className="text-xs text-muted-foreground italic pl-4">No tools triggered for this interaction.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="w-px h-6 bg-gradient-to-b from-purple-500/50 to-white/10" />
+
+            {/* 3. Output */}
+            <div className="flex flex-col items-center w-full">
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4 w-full flex items-center gap-4">
+                <div className="p-3 rounded-full bg-lime-500/20 text-lime-400">
+                  <Bot className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium text-white">Synthesis & Formatting</h4>
+                  <p className="text-xs text-muted-foreground line-clamp-2">Aggregated tool outputs into final response delivery.</p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
