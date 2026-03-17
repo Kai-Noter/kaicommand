@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import ZAI from 'z-ai-web-dev-sdk'
 import { getUserId } from '@/lib/api-auth'
 import { logAudit } from '@/lib/audit'
+import { indexKnowledgeNode } from '@/lib/second-brain'
 
 // Mock data for professional contexts
 const MOCK_CONTEXTS = [
@@ -414,6 +415,18 @@ Return JSON: { "category": "...", "tags": [...], "summary": "..." }`
           userId
         }
       })
+
+      // Hook into the Semantic Brain
+      try {
+        await indexKnowledgeNode({
+          userId,
+          nodeType: 'VoiceNote',
+          referenceId: note.id,
+          content: `Voice Note Category: ${note.category}. Summary: ${note.summary}. Transcript: ${note.transcript}`
+        })
+      } catch (embErr) {
+        console.error('Failed to index VoiceNote:', embErr)
+      }
 
       return NextResponse.json({ note, nlpResult, success: true })
     }

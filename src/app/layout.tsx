@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/lib/theme-context";
 import { Providers } from "@/components/providers";
+import { CommandMenu } from "@/components/CommandMenu";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,7 +28,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "KaiCommand - AI Command Center",
     description: "Your personal AI Command Center for productivity, management, and brain wellness",
-    url: "https://kaicommand.app",
+    url: "https://kaicommand.com",
     siteName: "KaiCommand",
     type: "website",
     images: ["/icon.png"],
@@ -53,6 +54,7 @@ export default function RootLayout({
         <ThemeProvider>
           <Providers>
             {children}
+            <CommandMenu />
             <Toaster />
           </Providers>
         </ThemeProvider>
