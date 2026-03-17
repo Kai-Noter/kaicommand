@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSession, signIn, signOut } from 'next-auth/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard,
@@ -53,26 +54,15 @@ import {
   Volume2,
   VolumeX,
   Siren,
-  Timer,
-  // Play Centre icons
-  Gamepad2,
-  Target,
-  Trophy,
-  RotateCcw,
-  Wind,
-  Puzzle,
-  Shuffle,
-  Check,
   Sun,
   Moon,
   Coffee,
-  Leaf,
-  Flame,
-  Gauge,
   Lock,
   Unlock,
   BadgeCheck,
   Brain,
+  Check,
+  RotateCcw,
   // AI Assistant icons
   MessageCircle,
   Headphones,
@@ -285,7 +275,6 @@ type PasswordEntryType = {
   lastUsed: Date | null
 }
 
-// Navigation items - with Play Centre added
 const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'context', label: 'Work Context', icon: MapPin },
@@ -297,7 +286,6 @@ const navItems = [
   { id: 'emails', label: 'Email Hub', icon: Mail },
   { id: 'finance', label: 'Finance', icon: DollarSign },
   { id: 'passwords', label: 'Password Vault', icon: ShieldCheck },
-  { id: 'playcentre', label: 'Play Centre', icon: Gamepad2 },
   { id: 'settings', label: 'Settings', icon: Settings }
 ]
 
@@ -306,7 +294,6 @@ const mobileNavItems = [
   { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
   { id: 'apps', label: 'Apps', icon: AppWindow },
   { id: 'passwords', label: 'Vault', icon: ShieldCheck },
-  { id: 'playcentre', label: 'Play', icon: Gamepad2 },
   { id: 'settings', label: 'Settings', icon: Settings }
 ]
 
@@ -360,8 +347,9 @@ export default function Home() {
     return () => window.removeEventListener('resize', checkScreenSize)
   }, [])
   
-  // Auth & Profile states
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  // Auth (NextAuth) – sign-in state is driven by session
+  const { data: session, status } = useSession()
+  const isLoggedIn = status === 'authenticated'
   const [profileImage, setProfileImage] = useState<string>('')
   const [userProfile, setUserProfile] = useState({
     firstName: '',
@@ -369,7 +357,24 @@ export default function Home() {
     email: '',
     phone: ''
   })
+  const [signInOpen, setSignInOpen] = useState(false)
+  const [signInCredentials, setSignInCredentials] = useState({ email: '', password: '' })
+  const [signInError, setSignInError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Sync profile from session when authenticated
+  useEffect(() => {
+    if (session?.user) {
+      const name = session.user.name ?? session.user.email ?? ''
+      const parts = name.split(' ')
+      setUserProfile(prev => ({
+        ...prev,
+        email: session.user?.email ?? prev.email,
+        firstName: parts[0] ?? prev.firstName,
+        lastName: parts.slice(1).join(' ') ?? prev.lastName
+      }))
+    }
+  }, [session])
   
   // Data states
   const [apps, setApps] = useState<AppType[]>([])
@@ -405,38 +410,6 @@ export default function Home() {
   const [voiceInput, setVoiceInput] = useState('')
   const [emergencyModalOpen, setEmergencyModalOpen] = useState(false)
   const [selectedProtocol, setSelectedProtocol] = useState<EmergencyProtocolType | null>(null)
-
-  // Play Centre states
-  const [playScore, setPlayScore] = useState(0)
-  const [playStreak, setPlayStreak] = useState(0)
-  const [playLevel, setPlayLevel] = useState(1)
-  const [playGamesPlayed, setPlayGamesPlayed] = useState(0)
-  
-  // Breathing exercise
-  const [breathingActive, setBreathingActive] = useState(false)
-  const [breathPhase, setBreathPhase] = useState<'inhale' | 'hold' | 'exhale'>('inhale')
-  const [breathTimer, setBreathTimer] = useState(0)
-  
-  // Memory game
-  const [memoryCards, setMemoryCards] = useState<{ id: number; emoji: string; flipped: boolean; matched: boolean }[]>([])
-  const [flippedCards, setFlippedCards] = useState<number[]>([])
-  const [memoryMoves, setMemoryMoves] = useState(0)
-  const [memoryComplete, setMemoryComplete] = useState(false)
-  
-  // Reaction game
-  const [reactionState, setReactionState] = useState<'waiting' | 'ready' | 'click' | 'result'>('waiting')
-  const [reactionStartTime, setReactionStartTime] = useState(0)
-  const [reactionTime, setReactionTime] = useState(0)
-  const [reactionBest, setReactionBest] = useState(999)
-  
-  // Focus timer
-  const [focusMinutes, setFocusMinutes] = useState(25)
-  const [focusActive, setFocusActive] = useState(false)
-  const [focusTimeLeft, setFocusTimeLeft] = useState(25 * 60)
-  
-  // Meditation
-  const [meditationActive, setMeditationActive] = useState(false)
-  const [meditationTime, setMeditationTime] = useState(0)
 
   // AI Assistant states
   const [aiModalOpen, setAiModalOpen] = useState(false)
@@ -621,157 +594,6 @@ export default function Home() {
     }
     fetchProfessional()
   }, [activeTab])
-
-  // Pause Play Centre timers when user leaves the tab (saves CPU and avoids background state)
-  useEffect(() => {
-    if (activeTab !== 'playcentre') {
-      if (breathingActive) setBreathingActive(false)
-      if (focusActive) setFocusActive(false)
-      if (meditationActive) setMeditationActive(false)
-    }
-  }, [activeTab])
-
-  // Breathing exercise effect
-  useEffect(() => {
-    if (!breathingActive || activeTab !== 'playcentre') return
-
-    const phases: Array<{ phase: 'inhale' | 'hold' | 'exhale'; duration: number }> = [
-      { phase: 'inhale', duration: 4 },
-      { phase: 'hold', duration: 4 },
-      { phase: 'exhale', duration: 4 }
-    ]
-
-    let phaseIndex = 0
-    let countdown = phases[0].duration
-
-    const interval = setInterval(() => {
-      countdown--
-      setBreathTimer(countdown)
-
-      if (countdown <= 0) {
-        phaseIndex = (phaseIndex + 1) % phases.length
-        setBreathPhase(phases[phaseIndex].phase)
-        countdown = phases[phaseIndex].duration
-      }
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [breathingActive, activeTab])
-
-  // Focus timer effect (only when Play Centre tab is active)
-  useEffect(() => {
-    if (!focusActive || focusTimeLeft <= 0 || activeTab !== 'playcentre') return
-
-    const interval = setInterval(() => {
-      setFocusTimeLeft(prev => {
-        if (prev <= 1) {
-          setFocusActive(false)
-          setPlayScore(s => s + 50)
-          setPlayStreak(s => s + 1)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [focusActive, focusTimeLeft, activeTab])
-
-  // Meditation timer effect (only when Play Centre tab is active)
-  useEffect(() => {
-    if (!meditationActive || activeTab !== 'playcentre') return
-
-    const interval = setInterval(() => {
-      setMeditationTime(prev => prev + 1)
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [meditationActive, activeTab])
-
-  // Initialize memory game
-  const initMemoryGame = useCallback(() => {
-    const emojis = ['🧠', '💫', '🌟', '✨', '🔮', '🎯', '🎪', '🎨']
-    const cards = [...emojis, ...emojis]
-      .sort(() => Math.random() - 0.5)
-      .map((emoji, index) => ({
-        id: index,
-        emoji,
-        flipped: false,
-        matched: false
-      }))
-    setMemoryCards(cards)
-    setFlippedCards([])
-    setMemoryMoves(0)
-    setMemoryComplete(false)
-  }, [])
-
-  // Handle memory card click
-  const handleMemoryClick = (id: number) => {
-    if (flippedCards.length === 2) return
-    if (memoryCards[id].matched || memoryCards[id].flipped) return
-
-    const newCards = [...memoryCards]
-    newCards[id].flipped = true
-    setMemoryCards(newCards)
-
-    const newFlipped = [...flippedCards, id]
-    setFlippedCards(newFlipped)
-
-    if (newFlipped.length === 2) {
-      setMemoryMoves(m => m + 1)
-      const [first, second] = newFlipped
-
-      if (memoryCards[first].emoji === memoryCards[second].emoji) {
-        setTimeout(() => {
-          const matched = [...memoryCards]
-          matched[first].matched = true
-          matched[second].matched = true
-          setMemoryCards(matched)
-          setFlippedCards([])
-
-          if (matched.every(c => c.matched)) {
-            setMemoryComplete(true)
-            setPlayScore(s => s + 100)
-            setPlayGamesPlayed(s => s + 1)
-          }
-        }, 500)
-      } else {
-        setTimeout(() => {
-          const reset = [...memoryCards]
-          reset[first].flipped = false
-          reset[second].flipped = false
-          setMemoryCards(reset)
-          setFlippedCards([])
-        }, 1000)
-      }
-    }
-  }
-
-  // Reaction game
-  const startReactionGame = () => {
-    setReactionState('ready')
-    const delay = 2000 + Math.random() * 3000
-    setTimeout(() => {
-      setReactionState('click')
-      setReactionStartTime(Date.now())
-    }, delay)
-  }
-
-  const handleReactionClick = () => {
-    if (reactionState === 'ready') {
-      setReactionState('waiting')
-      setReactionTime(0)
-    } else if (reactionState === 'click') {
-      const time = Date.now() - reactionStartTime
-      setReactionTime(time)
-      setReactionBest(prev => Math.min(prev, time))
-      setReactionState('result')
-      setPlayScore(s => s + Math.max(1, Math.floor((500 - time) / 10)))
-      setPlayGamesPlayed(s => s + 1)
-    } else if (reactionState === 'result' || reactionState === 'waiting') {
-      startReactionGame()
-    }
-  }
 
   // Chat function
   const sendChatMessage = async () => {
@@ -989,11 +811,9 @@ export default function Home() {
         setEmergencyModalOpen(true)
         break
       case 'startFocus':
-        setActiveTab('playcentre')
         setFocusActive(true)
         break
       case 'startBreathing':
-        setActiveTab('playcentre')
         setBreathingActive(true)
         break
     }
@@ -1120,7 +940,6 @@ export default function Home() {
   const quickActions = [
     { label: 'Scan Apps', icon: Shield, action: () => setActiveTab('apps') },
     { label: 'Check Emails', icon: Mail, action: () => setActiveTab('emails') },
-    { label: 'Play Centre', icon: Gamepad2, action: () => setActiveTab('playcentre') },
     { label: 'Emergency', icon: Siren, action: () => setEmergencyModalOpen(true) }
   ]
 
@@ -1472,37 +1291,11 @@ export default function Home() {
                       Guard – Focus & wellbeing
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <CardContent>
                     <div className="space-y-1">
                       <p className="text-sm text-muted-foreground">
-                        {focusActive
-                          ? 'Focus timer is running – I’ll minimise distractions and nudge you if you drift.'
-                          : 'No active focus block. Start a 25‑minute deep‑work session or a short breathing break.'}
+                        Use the AI assistant (⌘⇧K) for focus tips, breathing prompts, and wellbeing suggestions.
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        Energy level: {energyLevel}/10 • Breathing {breathingActive ? 'active' : 'idle'} • Play streak:{' '}
-                        {playStreak}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setActiveTab('playcentre')}>
-                        <Brain className="w-3 h-3 mr-1" />
-                        Open Play Centre
-                      </Button>
-                      <Button
-                        variant="default"
-                        size="sm"
-                        onClick={() => {
-                          setActiveTab('playcentre')
-                          setFocusActive(true)
-                          setFocusTimeLeft(focusMinutes * 60)
-                          setBreathingActive(false)
-                        }}
-                      >
-                        <Target className="w-3 h-3 mr-1" />
-                        Start focus block
-                      </Button>
-                    </div>
                   </CardContent>
                 </Card>
 
@@ -2165,264 +1958,6 @@ export default function Home() {
               </motion.div>
             )}
 
-            {/* PLAY CENTRE TAB */}
-            {activeTab === 'playcentre' && (
-              <motion.div
-                key="playcentre"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="space-y-6"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-2xl font-bold flex items-center gap-2">
-                      <Gamepad2 className="w-6 h-6 text-purple-400" />
-                      Brain Play Centre
-                    </h3>
-                    <p className="text-muted-foreground">Relax, detox, maintain, and grow your brain!</p>
-                  </div>
-                  <Card className="glass-card px-4 py-2">
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        <Trophy className="w-4 h-4 text-amber-400" />
-                        <span className="font-bold">{playScore}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Flame className="w-4 h-4 text-orange-400" />
-                        <span>{playStreak} streak</span>
-                      </div>
-                    </div>
-                  </Card>
-                </div>
-
-                {/* Play Centre Categories */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Relaxation */}
-                  <Card className="glass-card">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 text-cyan-400">
-                        <Wind className="w-5 h-5" />
-                        Relaxation
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {/* Breathing */}
-                      <div className="text-center">
-                        {breathingActive ? (
-                          <motion.div
-                            animate={{ scale: breathPhase === 'inhale' ? 1.2 : breathPhase === 'exhale' ? 0.8 : 1 }}
-                            className="w-24 h-24 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 mx-auto flex items-center justify-center"
-                          >
-                            <div className="text-white text-center">
-                              <p className="text-xl font-bold">{breathTimer}</p>
-                              <p className="text-xs capitalize">{breathPhase}</p>
-                            </div>
-                          </motion.div>
-                        ) : (
-                          <div className="w-24 h-24 rounded-full bg-white/10 mx-auto flex items-center justify-center">
-                            <Wind className="w-8 h-8 text-cyan-400" />
-                          </div>
-                        )}
-                        <Button
-                          className="mt-4 glass-button"
-                          onClick={() => setBreathingActive(!breathingActive)}
-                        >
-                          {breathingActive ? <Pause className="w-4 h-4 mr-2" /> : <Play className="w-4 h-4 mr-2" />}
-                          {breathingActive ? 'Stop' : 'Start'} Breathing
-                        </Button>
-                      </div>
-
-                      {/* Meditation */}
-                      <Separator />
-                      <div className="text-center">
-                        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 mx-auto flex items-center justify-center">
-                          <p className="text-white text-lg font-bold">{formatTime(meditationTime)}</p>
-                        </div>
-                        <Button
-                          className="mt-4 glass-button"
-                          onClick={() => {
-                            setMeditationActive(!meditationActive)
-                            if (meditationActive && meditationTime > 0) {
-                              setPlayScore(s => s + Math.floor(meditationTime / 10))
-                            }
-                          }}
-                        >
-                          {meditationActive ? <Pause className="w-4 h-4 mr-2" /> : <Play className="w-4 h-4 mr-2" />}
-                          {meditationActive ? 'End' : 'Start'} Meditation
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Focus Timer */}
-                  <Card className="glass-card">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 text-green-400">
-                        <Timer className="w-5 h-5" />
-                        Mental Detox - Focus Timer
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="text-center">
-                      <div className="relative w-40 h-40 mx-auto">
-                        <svg className="w-full h-full transform -rotate-90">
-                          <circle cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="6" fill="none" className="text-white/10" />
-                          <circle
-                            cx="80"
-                            cy="80"
-                            r="70"
-                            stroke="currentColor"
-                            strokeWidth="6"
-                            fill="none"
-                            strokeDasharray={440}
-                            strokeDashoffset={440 * (1 - focusTimeLeft / (focusMinutes * 60))}
-                            className="text-green-400 transition-all duration-1000"
-                          />
-                        </svg>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div>
-                            <p className="text-3xl font-bold">{formatTime(focusTimeLeft)}</p>
-                            <p className="text-xs text-muted-foreground">{focusActive ? 'Focus!' : 'Ready?'}</p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex justify-center gap-2 mt-4">
-                        {[15, 25, 45].map((mins) => (
-                          <Button
-                            key={mins}
-                            variant={focusMinutes === mins ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => { setFocusMinutes(mins); setFocusTimeLeft(mins * 60) }}
-                            disabled={focusActive}
-                          >
-                            {mins}m
-                          </Button>
-                        ))}
-                      </div>
-                      <Button className="mt-4 glass-button" onClick={() => setFocusActive(!focusActive)}>
-                        {focusActive ? <Pause className="w-4 h-4 mr-2" /> : <Play className="w-4 h-4 mr-2" />}
-                        {focusActive ? 'Pause' : 'Start'} Focus
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Games Section */}
-                <h4 className="text-lg font-semibold flex items-center gap-2">
-                  <Brain className="w-5 h-5 text-amber-400" />
-                  Brain Training Games
-                </h4>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Memory Game */}
-                  <Card className="glass-card">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 text-amber-400">
-                        <Puzzle className="w-5 h-5" />
-                        Memory Match
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {memoryCards.length === 0 ? (
-                        <div className="text-center py-8">
-                          <Puzzle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                          <Button onClick={initMemoryGame} className="glass-button">
-                            <Play className="w-4 h-4 mr-2" />Start Game
-                          </Button>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex justify-between mb-2">
-                            <Badge variant="outline">Moves: {memoryMoves}</Badge>
-                            {memoryComplete && <Badge className="bg-emerald-500/20 text-emerald-400">Complete! +100pts</Badge>}
-                          </div>
-                          <div className="grid grid-cols-4 gap-2">
-                            {memoryCards.map((card) => (
-                              <motion.button
-                                key={card.id}
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                onClick={() => handleMemoryClick(card.id)}
-                                className={`aspect-square rounded-lg text-2xl flex items-center justify-center transition-all ${
-                                  card.matched ? 'bg-emerald-500/20' : card.flipped ? 'bg-amber-500/20' : 'bg-white/5 hover:bg-white/10'
-                                } border border-white/10`}
-                              >
-                                {(card.flipped || card.matched) ? card.emoji : '?'}
-                              </motion.button>
-                            ))}
-                          </div>
-                          {memoryComplete && (
-                            <Button onClick={initMemoryGame} className="w-full mt-4 glass-button">
-                              <RotateCcw className="w-4 h-4 mr-2" />Play Again
-                            </Button>
-                          )}
-                        </>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  {/* Reaction Game */}
-                  <Card className="glass-card">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 text-red-400">
-                        <Zap className="w-5 h-5" />
-                        Reaction Test
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <motion.button
-                        whileTap={{ scale: 0.98 }}
-                        onClick={handleReactionClick}
-                        className={`w-full h-48 rounded-xl flex items-center justify-center transition-all ${
-                          reactionState === 'waiting' ? 'bg-gray-500/20' :
-                          reactionState === 'ready' ? 'bg-red-500/20 border-2 border-red-500' :
-                          reactionState === 'click' ? 'bg-green-500/20 border-2 border-green-500 animate-pulse' :
-                          'bg-blue-500/20 border-2 border-blue-500'
-                        }`}
-                      >
-                        <div className="text-center">
-                          {reactionState === 'waiting' && <><p className="text-lg font-bold">Click to Start</p><p className="text-muted-foreground text-sm mt-2">Wait for green!</p></>}
-                          {reactionState === 'ready' && <><p className="text-lg font-bold text-red-400">Wait...</p><p className="text-muted-foreground text-sm mt-2">Don't click yet!</p></>}
-                          {reactionState === 'click' && <p className="text-2xl font-bold text-green-400">CLICK!</p>}
-                          {reactionState === 'result' && <><p className="text-3xl font-bold text-blue-400">{reactionTime}ms</p><p className="text-muted-foreground text-sm mt-2">Best: {reactionBest === 999 ? '-' : `${reactionBest}ms`}</p></>}
-                        </div>
-                      </motion.button>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Play Stats */}
-                <Card className="glass-card">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Trophy className="w-5 h-5 text-amber-400" />
-                      Your Play Stats
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-4 gap-4 text-center">
-                      <div>
-                        <p className="text-2xl font-bold">{playScore}</p>
-                        <p className="text-xs text-muted-foreground">Total Score</p>
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">{playGamesPlayed}</p>
-                        <p className="text-xs text-muted-foreground">Games Played</p>
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">{playStreak}</p>
-                        <p className="text-xs text-muted-foreground">Day Streak</p>
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">{playLevel}</p>
-                        <p className="text-xs text-muted-foreground">Level</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            )}
-
             {/* Password Vault Tab */}
             {activeTab === 'passwords' && (
               <motion.div
@@ -2721,9 +2256,7 @@ export default function Home() {
                           <Button 
                             variant="outline" 
                             size="sm" 
-                            onClick={() => {
-                              setIsLoggedIn(false)
-                            }}
+                            onClick={() => signOut({ callbackUrl: '/' })}
                             className="w-full sm:w-auto tap-target"
                           >
                             <LogOut className="w-4 h-4 mr-2" />
@@ -2733,7 +2266,7 @@ export default function Home() {
                           <div className="flex gap-2 w-full sm:w-auto">
                             <Button 
                               size="sm" 
-                              onClick={() => setIsLoggedIn(true)} 
+                              onClick={() => { setSignInError(null); setSignInOpen(true) }} 
                               className="flex-1 sm:flex-none bg-lime-500 hover:bg-lime-600 text-black tap-target"
                             >
                               <LogIn className="w-4 h-4 mr-2" />
@@ -3172,6 +2705,74 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
+      {/* Sign In Dialog – uses NextAuth credentials */}
+      <Dialog open={signInOpen} onOpenChange={(open) => { setSignInOpen(open); if (!open) setSignInError(null) }}>
+        <DialogContent className="glass max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <LogIn className="w-5 h-5 text-lime-500" />
+              Sign In
+            </DialogTitle>
+            <DialogDescription>Use your email and password to sign in. Ask your admin for the demo password if needed.</DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault()
+              setSignInError(null)
+              const res = await signIn('credentials', {
+                email: signInCredentials.email,
+                password: signInCredentials.password,
+                redirect: false,
+                callbackUrl: '/'
+              })
+              if (res?.error) {
+                setSignInError('Invalid email or password')
+                return
+              }
+              if (res?.ok) {
+                setSignInOpen(false)
+                setSignInCredentials({ email: '', password: '' })
+              }
+            }}
+            className="space-y-4"
+          >
+            <div>
+              <Label className="text-xs">Email</Label>
+              <Input
+                type="email"
+                value={signInCredentials.email}
+                onChange={(e) => setSignInCredentials(prev => ({ ...prev, email: e.target.value }))}
+                placeholder="you@example.com"
+                className="mt-1"
+                required
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Password</Label>
+              <Input
+                type="password"
+                value={signInCredentials.password}
+                onChange={(e) => setSignInCredentials(prev => ({ ...prev, password: e.target.value }))}
+                placeholder="Password"
+                className="mt-1"
+                required
+              />
+            </div>
+            {signInError && (
+              <p className="text-sm text-red-500">{signInError}</p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setSignInOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-lime-500 hover:bg-lime-600 text-black">
+                Sign In
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Sign Up Dialog */}
       <Dialog open={signUpOpen} onOpenChange={setSignUpOpen}>
         <DialogContent className="glass max-w-md">
@@ -3266,8 +2867,9 @@ export default function Home() {
                     email: signUpForm.email,
                     phone: ''
                   })
-                  setIsLoggedIn(true)
                   setSignUpOpen(false)
+                  setSignInCredentials(prev => ({ ...prev, email: signUpForm.email, password: signUpForm.password }))
+                  setSignInOpen(true)
                   setSignUpForm({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '' })
                 }
               }}

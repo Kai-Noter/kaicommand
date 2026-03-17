@@ -36,7 +36,6 @@ const COMMANDS: { id: string; label: string; icon: LucideIcon }[] = [
   { id: 'emails', label: 'Email Hub', icon: Mail },
   { id: 'finance', label: 'Finance', icon: DollarSign },
   { id: 'passwords', label: 'Password Vault', icon: ShieldCheck },
-  { id: 'playcentre', label: 'Play Centre', icon: Gamepad2 },
   { id: 'settings', label: 'Settings', icon: Settings },
 ]
 
