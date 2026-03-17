@@ -70,15 +70,17 @@ const getPreviewContent = (content: string, query: string) => {
   if (end < content.length) snippet = snippet + '...'
   return snippet
 }
-
 function useDebounce<T extends (...args: any[]) => any>(callback: T, delay: number) {
-  const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null)
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
   return useCallback((...args: Parameters<T>) => {
-    if (timeoutId) clearTimeout(timeoutId)
-    const id = setTimeout(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+    }
+    
+    timeoutRef.current = setTimeout(() => {
       callback(...args)
     }, delay)
-    setTimeoutId(id)
   }, [callback, delay])
 }
 
@@ -120,11 +122,16 @@ export function SmartNotesView() {
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   
-  // Edit Buffer
-  const [editTitle, setEditTitle] = useState('')
-  const [editContent, setEditContent] = useState('')
-  const [editTags, setEditTags] = useState<string[]>([])
-  const [editSubfolderId, setEditSubfolderId] = useState<string>('')
+  // Optimistic UI Updater for the selected Note
+  const optimisticUpdateNote = useCallback((id: string, updates: Partial<SmartNote>) => {
+    setFolders(prev => prev.map(f => ({
+      ...f,
+      subfolders: f.subfolders.map(s => ({
+        ...s,
+        notes: s.notes.map(n => n.id === id ? { ...n, ...updates, updatedAt: new Date().toISOString() } : n)
+      }))
+    })))
+  }, [])
   
   // Undo/Redo History Stack
   const [history, setHistory] = useState<{title: string, content: string}[]>([])
@@ -265,21 +272,13 @@ export function SmartNotesView() {
 
   const selectedNote = useMemo(() => allNotes.find(n => n.id === selectedNoteId), [allNotes, selectedNoteId])
 
-  // Sync edits when selected note changes
+  // Sync history when selected note changes
   useEffect(() => {
     if (selectedNote && !isEditing) {
-      setEditTitle(selectedNote.title)
-      setEditContent(selectedNote.content)
-      try { setEditTags(JSON.parse(selectedNote.tags || '[]')) } catch(e) { setEditTags([]) }
-      setEditSubfolderId(selectedNote.subfolderId)
       setSaveStatus('saved')
       setHistory([{ title: selectedNote.title, content: selectedNote.content }])
       setHistoryIndex(0)
     } else if (!selectedNote && !isEditing) {
-      setEditTitle('')
-      setEditContent('')
-      setEditTags([])
-      setEditSubfolderId(selectedSubfolderId || '')
       setSaveStatus('saved')
       setHistory([{ title: '', content: '' }])
       setHistoryIndex(0)
@@ -294,54 +293,56 @@ export function SmartNotesView() {
     if (creatingSubfolderFor && subfolderInputRef.current) subfolderInputRef.current.focus()
   }, [creatingSubfolderFor])
 
-  // Find a fallback subfolder if none is selected
-  const getDefaultSubfolderId = () => {
-    if (folders.length === 0) return null
-    if (selectedSubfolderId) return selectedSubfolderId
-    
-    let folder = folders.find(f => f.id === selectedFolderId)
-    if (!folder) folder = folders.find(f => f.name === 'Flow') || folders[0]
-      
-    if (folder.subfolders.length > 0) return folder.subfolders[0].id
-    return null
-  }
-
-  const handleCreateNew = () => {
-    const defaultSub = getDefaultSubfolderId()
-    if (!defaultSub) {
-      alert("Please create a Subfolder first to hold your note!")
+  const handleCreateNew = async () => {
+    if (!selectedSubfolderId) {
+      alert("Please select a specific Subfolder before creating a new Note.")
       return
     }
-    setSelectedNoteId(null)
-    setEditTitle('')
-    setEditContent('')
-    setEditTags([])
-    setEditSubfolderId(defaultSub)
-    setIsEditing(true)
-    setSaveStatus('unsaved')
-    setHistory([{ title: '', content: '' }])
-    setHistoryIndex(0)
-  }
-
-  const performSave = async (title: string, content: string, subfolderId: string, tags: string[]) => {
-    if (!subfolderId) return
+    
     setIsSaving(true)
     setSaveStatus('saving')
     try {
-      const action = selectedNoteId ? 'UPDATE_NOTE' : 'CREATE_NOTE'
       const res = await fetch('/api/smart-notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action,
-          payload: { id: selectedNoteId, title, content, subfolderId, tags: JSON.stringify(tags), isPinned: selectedNote?.isPinned || false }
+          action: 'CREATE_NOTE',
+          payload: { title: 'Untitled Note', content: '', subfolderId: selectedSubfolderId, tags: '[]' }
         })
       })
       const data = await res.json()
       if (data.success) {
-        if (!selectedNoteId) setSelectedNoteId(data.data.id)
+        await fetchHierarchy()
+        setSelectedNoteId(data.data.id)
+        setIsEditing(true)
         setSaveStatus('saved')
-        // Optimistically reload hierarchy immediately to fulfill "No manual refresh allowed" output constraint
+        setHistory([{ title: 'Untitled Note', content: '' }])
+        setHistoryIndex(0)
+      }
+    } catch {
+       setSaveStatus('unsaved')
+    } finally {
+       setIsSaving(false)
+    }
+  }
+
+  const performSave = async (id: string, title: string, content: string, subfolderId: string, tags: string[], isPinned: boolean) => {
+    if (!subfolderId || !id) return
+    setIsSaving(true)
+    setSaveStatus('saving')
+    try {
+      const res = await fetch('/api/smart-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'UPDATE_NOTE',
+          payload: { id, title, content, subfolderId, tags: JSON.stringify(tags), isPinned }
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        setSaveStatus('saved')
+        // We already optimistic updated locally, but let's sync to be perfectly confident
         fetchHierarchy() 
       }
     } catch(e) {
@@ -363,42 +364,43 @@ export function SmartNotesView() {
   }, 1500)
 
   const handleUndo = () => {
-    if (historyIndex > 0) {
+    if (historyIndex > 0 && selectedNote) {
       const prev = history[historyIndex - 1]
-      setEditTitle(prev.title)
-      setEditContent(prev.content)
+      optimisticUpdateNote(selectedNote.id, { title: prev.title, content: prev.content })
       setHistoryIndex(historyIndex - 1)
       setSaveStatus('unsaved')
-      debouncedSave(prev.title, prev.content, editSubfolderId, editTags)
+      debouncedSave(selectedNote.id, prev.title, prev.content, selectedNote.subfolderId, JSON.parse(selectedNote.tags || '[]'), selectedNote.isPinned)
     }
   }
 
   const handleRedo = () => {
-    if (historyIndex < history.length - 1) {
+    if (historyIndex < history.length - 1 && selectedNote) {
       const next = history[historyIndex + 1]
-      setEditTitle(next.title)
-      setEditContent(next.content)
+      optimisticUpdateNote(selectedNote.id, { title: next.title, content: next.content })
       setHistoryIndex(historyIndex + 1)
       setSaveStatus('unsaved')
-      debouncedSave(next.title, next.content, editSubfolderId, editTags)
+      debouncedSave(selectedNote.id, next.title, next.content, selectedNote.subfolderId, JSON.parse(selectedNote.tags || '[]'), selectedNote.isPinned)
     }
   }
 
-  useEffect(() => {
-    if (isEditing && editSubfolderId && (editTitle !== selectedNote?.title || editContent !== selectedNote?.content || editSubfolderId !== selectedNote?.subfolderId || JSON.stringify(editTags) !== selectedNote?.tags)) {
-      setSaveStatus('unsaved')
-      debouncedSave(editTitle, editContent, editSubfolderId, editTags)
-    }
-  }, [editTitle, editContent, editSubfolderId, editTags, isEditing])
-
   const handleTitleChange = (e: any) => {
-    setEditTitle(e.target.value)
-    pushHistory(e.target.value, editContent)
+    const val = e.target.value
+    if (selectedNote) {
+      optimisticUpdateNote(selectedNote.id, { title: val })
+      pushHistory(val, selectedNote.content)
+      setSaveStatus('unsaved')
+      debouncedSave(selectedNote.id, val, selectedNote.content, selectedNote.subfolderId, JSON.parse(selectedNote.tags || '[]'), selectedNote.isPinned)
+    }
   }
 
   const handleContentChange = (e: any) => {
-    setEditContent(e.target.value)
-    pushHistory(editTitle, e.target.value)
+    const val = e.target.value
+    if (selectedNote) {
+      optimisticUpdateNote(selectedNote.id, { content: val })
+      pushHistory(selectedNote.title, val)
+      setSaveStatus('unsaved')
+      debouncedSave(selectedNote.id, selectedNote.title, val, selectedNote.subfolderId, JSON.parse(selectedNote.tags || '[]'), selectedNote.isPinned)
+    }
   }
 
   const togglePin = async (e: React.MouseEvent, note: SmartNote) => {
@@ -439,7 +441,8 @@ export function SmartNotesView() {
   const handleExportMarkdown = () => {
     if (!selectedNote) return
     let md = `# ${selectedNote.title}\n\n`
-    if (editTags.length > 0) md += `**Tags:** ${editTags.join(', ')}\n\n`
+    const parsedTags = JSON.parse(selectedNote.tags || '[]') as string[]
+    if (parsedTags.length > 0) md += `**Tags:** ${parsedTags.join(', ')}\n\n`
     md += selectedNote.content
     
     const blob = new Blob([md], { type: 'text/markdown' })
@@ -482,25 +485,36 @@ export function SmartNotesView() {
     setNewSubfolderName('')
   }
 
-  const handleAiAction = async (action: 'summarize' | 'key_points') => {
-    if (!editContent.trim()) return
+  const handleAiAction = async (actionType: 'summarize' | 'key_points') => {
+    if (!selectedNote || !selectedNote.content.trim()) return
     setIsAiProcessing(true)
     try {
       const res = await fetch('/api/smart-notes/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: editContent, action })
+        body: JSON.stringify({ action: actionType, content: selectedNote.content })
       })
       const data = await res.json()
-      if (data.success && data.result) {
-        setEditContent(prev => prev + '\n\n---\n**AI ' + (action === 'summarize' ? 'Summary' : 'Key Points') + ':**\n' + data.result)
+      if (data.success) {
+        const newContent = selectedNote.content + '\n\n---\n**AI Generated:**\n' + data.result
+        optimisticUpdateNote(selectedNote.id, { content: newContent })
+        setSaveStatus('unsaved')
+        debouncedSave(selectedNote.id, selectedNote.title, newContent, selectedNote.subfolderId, JSON.parse(selectedNote.tags || '[]'), selectedNote.isPinned)
       }
-    } catch (err) {}
-    finally { setIsAiProcessing(false) }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setIsAiProcessing(false)
+    }
   }
 
   const handleFormatCollapsible = () => {
-    setEditContent(prev => prev + '\n<details>\n  <summary>Click to expand</summary>\n  \n  Hidden content here...\n</details>\n')
+    if (selectedNote) {
+       const newContent = selectedNote.content + '\n<details>\n  <summary>Click to expand</summary>\n  \n  Hidden content here...\n</details>\n'
+       optimisticUpdateNote(selectedNote.id, { content: newContent })
+       setSaveStatus('unsaved')
+       debouncedSave(selectedNote.id, selectedNote.title, newContent, selectedNote.subfolderId, JSON.parse(selectedNote.tags || '[]'), selectedNote.isPinned)
+    }
   }
 
   const handleSendToTasks = async (note: SmartNote) => {
@@ -544,7 +558,12 @@ export function SmartNotesView() {
             <Button
               variant={selectedFolderId === null || selectedFolderId === 'All Notes' ? 'secondary' : 'ghost'}
               className={`w-full justify-start h-8 px-3 text-sm transition-all ${selectedFolderId === 'All Notes' || selectedFolderId === null ? 'bg-lime-500/20 text-lime-400' : 'hover:bg-white/5'}`}
-              onClick={() => { setSelectedFolderId('All Notes'); setSelectedSubfolderId(null) }}
+              onClick={() => { 
+                setSelectedFolderId('All Notes')
+                setSelectedSubfolderId(null)
+                setSelectedNoteId(null)
+                setIsEditing(false)
+              }}
             >
               <FileText className="w-4 h-4 mr-2 opacity-70" />
               All Notes
@@ -552,7 +571,12 @@ export function SmartNotesView() {
             <Button
               variant={selectedFolderId === 'Pinned' ? 'secondary' : 'ghost'}
               className={`w-full justify-start h-8 px-3 text-sm transition-all ${selectedFolderId === 'Pinned' ? 'bg-amber-500/20 text-amber-500' : 'hover:bg-white/5'}`}
-              onClick={() => { setSelectedFolderId('Pinned'); setSelectedSubfolderId(null) }}
+              onClick={() => { 
+                setSelectedFolderId('Pinned')
+                setSelectedSubfolderId(null)
+                setSelectedNoteId(null)
+                setIsEditing(false)
+              }}
             >
               <Pin className="w-4 h-4 mr-2 opacity-70" />
               Pinned
@@ -560,7 +584,12 @@ export function SmartNotesView() {
             <Button
               variant={selectedFolderId === 'Recent' ? 'secondary' : 'ghost'}
               className={`w-full justify-start h-8 px-3 text-sm transition-all ${selectedFolderId === 'Recent' ? 'bg-blue-500/20 text-blue-400' : 'hover:bg-white/5'}`}
-              onClick={() => { setSelectedFolderId('Recent'); setSelectedSubfolderId(null) }}
+              onClick={() => { 
+                setSelectedFolderId('Recent')
+                setSelectedSubfolderId(null)
+                setSelectedNoteId(null)
+                setIsEditing(false)
+              }}
             >
               <Clock className="w-4 h-4 mr-2 opacity-70" />
               Recent (7 Days)
@@ -603,7 +632,13 @@ export function SmartNotesView() {
                     </Button>
                     <div 
                       className="flex-1 flex flex-col justify-center px-2 cursor-pointer"
-                      onClick={() => { setSelectedFolderId(folder.id); setSelectedSubfolderId(null) }}
+                      onClick={() => { 
+                        setSelectedFolderId(folder.id)
+                        setSelectedSubfolderId(null)
+                        setSelectedNoteId(null)
+                        setIsEditing(false)
+                        setExpandedFolders(prev => ({...prev, [folder.id]: true}))
+                      }}
                     >
                       <div className={`flex items-center text-sm font-medium ${selectedFolderId === folder.id && !selectedSubfolderId ? 'text-lime-400' : ''}`}>
                         {expandedFolders[folder.id] ? <FolderOpen className="w-4 h-4 mr-2 opacity-70 text-lime-400" /> : <Folder className="w-4 h-4 mr-2 opacity-70" />}
@@ -666,7 +701,12 @@ export function SmartNotesView() {
                               }
                             }}
                             className={`flex items-center w-full rounded-md px-2 py-1.5 cursor-pointer transition-colors ${selectedSubfolderId === sub.id ? 'bg-lime-500/10 border-l-2 border-lime-500' : 'hover:bg-white/5 border-l-2 border-transparent'}`}
-                            onClick={() => { setSelectedFolderId(folder.id); setSelectedSubfolderId(sub.id) }}
+                            onClick={() => { 
+                              setSelectedFolderId(folder.id)
+                              setSelectedSubfolderId(sub.id)
+                              setSelectedNoteId(null)
+                              setIsEditing(false)
+                            }}
                           >
                             <div className="flex-1 min-w-0 pr-2">
                               <div className={`text-xs font-medium truncate ${selectedSubfolderId === sub.id ? 'text-lime-400' : 'text-foreground/80'}`}>
@@ -841,8 +881,15 @@ export function SmartNotesView() {
                 {isEditing ? (
                   <div className="flex gap-2 w-full max-w-sm">
                     <select 
-                      value={editSubfolderId}
-                      onChange={(e) => setEditSubfolderId(e.target.value)}
+                      value={selectedNote?.subfolderId || ''}
+                      onChange={(e) => {
+                         const val = e.target.value
+                         if (selectedNote) {
+                           optimisticUpdateNote(selectedNote.id, { subfolderId: val })
+                           setSaveStatus('unsaved')
+                           debouncedSave(selectedNote.id, selectedNote.title, selectedNote.content, val, JSON.parse(selectedNote.tags || '[]'), selectedNote.isPinned)
+                         }
+                      }}
                       className="h-8 text-xs bg-black/40 border border-border/50 focus-visible:ring-lime-500/50 rounded-md px-2 text-foreground/80 outline-none"
                     >
                       <option value="" disabled>Select Subfolder</option>
@@ -874,7 +921,7 @@ export function SmartNotesView() {
                     Edit
                   </Button>
                 ) : (
-                  <Button size="sm" onClick={() => { debouncedSave(editTitle, editContent, editSubfolderId, editTags); setIsEditing(false) }} className="h-8 bg-lime-500 hover:bg-lime-600 text-black shadow-[0_0_15px_rgba(132,204,22,0.4)]">
+                  <Button size="sm" onClick={() => setIsEditing(false)} className="h-8 bg-lime-500 hover:bg-lime-600 text-black shadow-[0_0_15px_rgba(132,204,22,0.4)]">
                     Done
                   </Button>
                 )}
@@ -915,19 +962,23 @@ export function SmartNotesView() {
                   <>
                     <input
                       type="text"
-                      value={editTitle}
+                      value={selectedNote?.title || ''}
                       onChange={handleTitleChange}
                       placeholder="Note Title"
                       className="w-full bg-transparent text-3xl md:text-5xl font-bold tracking-tight border-none outline-none placeholder:text-muted-foreground/30 text-foreground transition-all focus:placeholder:opacity-0"
                     />
                     
                     <div className="flex flex-wrap items-center gap-2 mb-4">
-                      {editTags.map(tag => (
+                      {selectedNote ? (JSON.parse(selectedNote.tags || '[]') as string[]).map(tag => (
                         <span key={tag} className="px-2 py-0.5 rounded-full bg-lime-500/10 border border-lime-500/20 text-lime-400 text-xs flex items-center gap-1">
                           #{tag}
-                          <button onClick={() => setEditTags(prev => prev.filter(t => t !== tag))} className="opacity-50 hover:opacity-100"><X className="w-3 h-3"/></button>
+                          <button onClick={() => {
+                             const newTags = JSON.parse(selectedNote.tags || '[]').filter((t: string) => t !== tag)
+                             optimisticUpdateNote(selectedNote.id, { tags: JSON.stringify(newTags) })
+                             debouncedSave(selectedNote.id, selectedNote.title, selectedNote.content, selectedNote.subfolderId, newTags, selectedNote.isPinned)
+                          }} className="opacity-50 hover:opacity-100"><X className="w-3 h-3"/></button>
                         </span>
-                      ))}
+                      )) : null}
                       <input 
                         type="text" 
                         placeholder="Add tag..." 
@@ -936,7 +987,14 @@ export function SmartNotesView() {
                           if (e.key === 'Enter' || e.key === ',') {
                             e.preventDefault()
                             const t = e.currentTarget.value.trim().replace(/^#/, '')
-                            if (t && !editTags.includes(t)) setEditTags([...editTags, t])
+                            if (t && selectedNote) {
+                               const currentTags = JSON.parse(selectedNote.tags || '[]')
+                               if (!currentTags.includes(t)) {
+                                 const newTags = [...currentTags, t]
+                                 optimisticUpdateNote(selectedNote.id, { tags: JSON.stringify(newTags) })
+                                 debouncedSave(selectedNote.id, selectedNote.title, selectedNote.content, selectedNote.subfolderId, newTags, selectedNote.isPinned)
+                               }
+                            }
                             e.currentTarget.value = ''
                           }
                         }}
@@ -949,7 +1007,7 @@ export function SmartNotesView() {
                         variant="ghost" 
                         className="h-7 text-xs text-purple-400 hover:bg-purple-500/20 hover:text-purple-300"
                         onClick={() => handleAiAction('summarize')}
-                        disabled={isAiProcessing || !editContent.trim()}
+                        disabled={isAiProcessing || !selectedNote?.content.trim()}
                       >
                         <Wand2 className={`w-3 h-3 mr-1.5 ${isAiProcessing ? 'animate-spin' : ''}`} />
                         Summarize
@@ -959,7 +1017,7 @@ export function SmartNotesView() {
                         variant="ghost" 
                         className="h-7 text-xs text-sky-400 hover:bg-sky-500/20 hover:text-sky-300"
                         onClick={() => handleAiAction('key_points')}
-                        disabled={isAiProcessing || !editContent.trim()}
+                        disabled={isAiProcessing || !selectedNote?.content.trim()}
                       >
                         <ListChecks className={`w-3 h-3 mr-1.5 ${isAiProcessing ? 'animate-spin' : ''}`} />
                         Key Points
@@ -977,8 +1035,8 @@ export function SmartNotesView() {
                     </div>
 
                     <Textarea
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
+                      value={selectedNote?.content || ''}
+                      onChange={handleContentChange}
                       placeholder="Start typing your note here..."
                       className="w-full min-h-[60vh] h-full bg-transparent border-none outline-none resize-none text-base md:text-lg leading-relaxed placeholder:text-muted-foreground/30 focus-visible:ring-0 p-0 shadow-none text-muted-foreground transition-all focus:text-foreground"
                     />

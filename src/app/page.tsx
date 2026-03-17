@@ -558,8 +558,8 @@ export default function Home() {
 
   // Hydration-safe clock
   useEffect(() => {
-    setCurrentTime(new Date())
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    setCurrentTime(prev => new Date())
+    const timer = setInterval(() => setCurrentTime(prev => new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
 
