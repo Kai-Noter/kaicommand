@@ -425,8 +425,21 @@ export function SmartNotesView() {
           setSelectedNoteId(null)
           setIsEditing(false)
         }
-        if (type === 'subfolder' && selectedSubfolderId === id) setSelectedSubfolderId(null)
-        if (type === 'folder' && selectedFolderId === id) setSelectedFolderId(null)
+        if (type === 'subfolder') {
+          if (selectedSubfolderId === id) {
+             setSelectedSubfolderId(null)
+             setSelectedNoteId(null)
+             setIsEditing(false)
+          }
+        }
+        if (type === 'folder') {
+          if (selectedFolderId === id) {
+             setSelectedFolderId(null)
+             setSelectedSubfolderId(null)
+             setSelectedNoteId(null)
+             setIsEditing(false)
+          }
+        }
         fetchHierarchy()
       } catch (err) {
         console.error(err)

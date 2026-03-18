@@ -1,6 +1,37 @@
 import { db } from './db'
+import { createSmartNote } from '@/lib/smart-notes'
 
 export const agentTools = [
+  {
+    type: "function",
+    function: {
+      name: "searchSmartNotes",
+      description: "Search the user's Smart Notes system-wide knowledge base for relevant context or historical notes.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "The search query to match against note content, titles, or AI summaries." },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "createSmartNote",
+      description: "Save an idea, memory, or context log directly into the user's unified Smart Notes system.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "A concise title" },
+          content: { type: "string", description: "The detailed content of the note" },
+          contextType: { type: "string", enum: ["idea", "task", "insight", "memory", "log"], description: "The type of thought being logged" }
+        },
+        required: ["title", "content"],
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -83,6 +114,49 @@ export const agentTools = [
 // Tool dispatcher
 export async function executeAgentTool(name: string, args: any, userId: string) {
   switch (name) {
+    case 'searchSmartNotes':
+      try {
+        const notes = await db.smartNote.findMany({
+          where: { 
+            userId,
+            OR: [
+              { title: { contains: args.query, mode: 'insensitive' } },
+              { content: { contains: args.query, mode: 'insensitive' } },
+              { aiSummary: { contains: args.query, mode: 'insensitive' } }
+            ]
+          },
+          take: 5,
+          orderBy: { updatedAt: 'desc' }
+        })
+        return { success: true, notes: notes.map(n => ({ title: n.title, aiSummary: n.aiSummary, contentSnippet: n.content.substring(0, 200) })) }
+      } catch (err: any) {
+        return { success: false, message: "Smart Note search failed: " + err.message }
+      }
+
+    case 'createSmartNote':
+      try {
+        // Find a default subfolder, or just throw it in the first one available
+        const folder = await db.smartFolder.findFirst({ where: { userId }, include: { subfolders: true } })
+        let targetSubfolderId = folder?.subfolders[0]?.id
+
+        if (!targetSubfolderId) {
+           const newFolder = await db.smartFolder.create({ data: { name: 'AI Inbox', userId, subfolders: { create: [{ name: 'Agent Notes', userId }] } }, include: { subfolders: true }})
+           targetSubfolderId = newFolder.subfolders[0].id
+        }
+
+        const note = await createSmartNote({
+           userId,
+           title: args.title,
+           content: args.content,
+           contextType: args.contextType || 'insight',
+           source: 'ai',
+           subfolderId: targetSubfolderId
+        })
+        return { success: true, message: "Saved exclusively to Smart Notes.", noteId: note.id }
+      } catch (err: any) {
+        return { success: false, message: "Note creation failed: " + err.message }
+      }
+
     case 'search_web':
       const apiKey = process.env.TAVILY_API_KEY
       if (!apiKey) {

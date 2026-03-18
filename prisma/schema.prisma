@@ -582,6 +582,14 @@ model SmartNote {
   tags        String   @default("[]") // JSON array
   isPinned    Boolean  @default(false)
   
+  // System-Wide Context Engine Fields
+  links           String?  @default("[]") // JSON array of noteIds
+  source          String   @default("manual") // manual, voice, finance, ai, task
+  contextType     String   @default("insight") // idea, task, insight, memory, log
+  relatedEntities String?  @default("[]") // JSON array of external module IDs
+  aiSummary       String?
+  aiKeyPoints     String?  @default("[]") // JSON array
+
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   

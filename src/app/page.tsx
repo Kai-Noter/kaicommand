@@ -558,9 +558,12 @@ export default function Home() {
 
   // Hydration-safe clock
   useEffect(() => {
-    setCurrentTime(prev => new Date())
-    const timer = setInterval(() => setCurrentTime(prev => new Date()), 1000)
-    return () => clearInterval(timer)
+    const initTimer = setTimeout(() => setCurrentTime(new Date()), 0)
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    return () => {
+      clearTimeout(initTimer)
+      clearInterval(timer)
+    }
   }, [])
 
   // Fetch core data on mount (dashboard: apps, emails, tasks, finance). Analysis and chat lazy-loaded when needed.

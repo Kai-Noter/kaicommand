@@ -12,6 +12,7 @@ export interface CompletionOptions {
   temperature?: number
   max_tokens?: number
   tools?: any[]
+  response_format?: any
 }
 
 export async function generateCompletion(
@@ -40,6 +41,7 @@ export async function generateCompletion(
         temperature,
         max_tokens,
         tools: options.tools,
+        response_format: options.response_format,
         thinking: { type: 'disabled' }
       })
     })
@@ -68,7 +70,8 @@ export async function generateCompletion(
         messages,
         temperature,
         max_tokens,
-        tools: options.tools
+        tools: options.tools,
+        response_format: options.response_format
       })
     })
     
@@ -95,7 +98,8 @@ export async function generateCompletion(
     const completion = await zai.chat.completions.create({
       messages: sdkMessages,
       temperature,
-      max_tokens
+      max_tokens,
+      response_format: options.response_format
     })
     const message = completion.choices[0]?.message
     return { text: message?.content || 'I apologize, but I could not generate a response.', tool_calls: undefined }

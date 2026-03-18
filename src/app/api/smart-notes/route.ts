@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getUserId } from '@/lib/api-auth'
 import { indexKnowledgeNode } from '@/lib/second-brain'
+import { createSmartNote, updateSmartNote } from '@/lib/smart-notes'
 
 // Fetch the entire Folder -> Subfolder -> Note hierarchy
 export async function GET(request: NextRequest) {
@@ -170,27 +171,14 @@ export async function POST(request: NextRequest) {
 
     // 3. NOTES
     if (action === 'CREATE_NOTE') {
-      const note = await db.smartNote.create({
-        data: { 
-          title: payload.title || 'Untitled Note', 
-          content: payload.content || '', 
-          subfolderId: payload.subfolderId, 
-          userId,
-          tags: payload.tags || "[]",
-          isPinned: payload.isPinned || false
-        }
+      const note = await createSmartNote({
+        title: payload.title,
+        content: payload.content,
+        subfolderId: payload.subfolderId,
+        userId,
+        tags: payload.tags ? JSON.parse(payload.tags) : [],
+        isPinned: payload.isPinned
       })
-      
-      try {
-        await indexKnowledgeNode({
-          userId,
-          nodeType: 'SmartNote',
-          referenceId: note.id,
-          content: `Note Title: ${note.title}\nContent: ${note.content}`
-        })
-      } catch (e) {
-        console.error('Failed indexing new note')
-      }
 
       return NextResponse.json({ data: note, success: true })
     }
@@ -204,35 +192,23 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'UPDATE_NOTE') {
-      const note = await db.smartNote.update({
-        where: { id: payload.id, userId },
-        data: { 
-          title: payload.title, 
-          content: payload.content,
-          tags: payload.tags,
-          isPinned: payload.isPinned
-        }
+      const note = await updateSmartNote({
+        noteId: payload.id,
+        userId,
+        title: payload.title,
+        content: payload.content,
+        tags: payload.tags ? JSON.parse(payload.tags) : undefined,
+        isPinned: payload.isPinned
       })
-
-      try {
-        await indexKnowledgeNode({
-          userId,
-          nodeType: 'SmartNote',
-          referenceId: note.id,
-          content: `Note Title: ${note.title}\nContent: ${note.content}`
-        })
-      } catch (e) {
-        console.error('Failed indexing updated note')
-      }
 
       return NextResponse.json({ data: note, success: true })
     }
 
     return NextResponse.json({ error: 'Invalid action provided', success: false }, { status: 400 })
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to process smart note action:', error)
-    return NextResponse.json({ error: 'Failed to process', success: false }, { status: 500 })
+    return NextResponse.json({ error: error.message || 'Failed to process', stack: error.stack, success: false }, { status: 500 })
   }
 }
 
