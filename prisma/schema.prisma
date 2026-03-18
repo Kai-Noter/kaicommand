@@ -515,7 +515,7 @@ model KnowledgeNode {
   incomingEdges KnowledgeEdge[] @relation("TargetNodeEdges")
 
   @@index([userId])
-  @@index([nodeType, referenceId])
+  @@unique([nodeType, referenceId])
 }
 
 model KnowledgeEdge {

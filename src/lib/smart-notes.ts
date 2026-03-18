@@ -54,9 +54,10 @@ export async function createSmartNote(params: CreateSmartNoteParams) {
     content: `Note Title: ${note.title}\nContent: ${note.content}`
   }).catch(console.error)
 
-  // Trigger background AI enrichment
+  // Trigger background AI enrichment and legal analysis
   if ((params.content || '').length > 50) {
     generateNoteSummaryInBackground(note.id, params.userId, params.title || '', params.content || '').catch(console.error)
+    analyzeLegalRisksInBackground(note.id, params.userId, params.title || '', params.content || '').catch(console.error)
   }
 
   return note
@@ -88,9 +89,10 @@ export async function updateSmartNote(params: UpdateSmartNoteParams) {
       content: `Note Title: ${note.title || note.title}\nContent: ${note.content || note.content}`
     }).catch(console.error)
     
-    // Check if substantial content exists to generate a summary
+    // Check if substantial content exists to generate a summary and analyze legal risks
     if (params.content && params.content.length > 50) {
        generateNoteSummaryInBackground(note.id, params.userId, params.title || '', params.content).catch(console.error)
+       analyzeLegalRisksInBackground(note.id, params.userId, params.title || '', params.content).catch(console.error)
     }
   }
 
@@ -118,6 +120,33 @@ async function generateNoteSummaryInBackground(noteId: string, userId: string, t
     }
   } catch (e) {
     console.error('Failed AI smart note reflection', e)
+  }
+}
+
+async function analyzeLegalRisksInBackground(noteId: string, userId: string, title: string, content: string) {
+  try {
+    const aiRes = await generateCompletion([
+      { role: 'system', content: 'You are a Legal Risk Analyzer. Review the following note for potential business, compliance, or regulatory risks (especially related to contracts, trade, agriculture in Malawi, or general liability). If you detect a risk, output a strict JSON object: { "hasRisk": true, "title": "Short risk title", "description": "Detailed explanation of the risk", "severity": "low" | "medium" | "high" }. If there is no legal risk, output { "hasRisk": false }.' },
+      { role: 'user', content: `Title: ${title}\n\nContent:\n${content}` }
+    ], { temperature: 0.1, max_tokens: 300, response_format: { type: "json_object" } })
+    
+    if (aiRes.text) {
+       const parsed = JSON.parse(aiRes.text)
+       if (parsed.hasRisk && parsed.title) {
+          await db.legalAlert.create({
+             data: {
+               title: parsed.title,
+               description: parsed.description || 'Detected potential legal risk.',
+               severity: parsed.severity || 'medium',
+               status: 'active',
+               relatedNodes: JSON.stringify([noteId]),
+               userId
+             }
+          })
+       }
+    }
+  } catch (e) {
+    console.error('Failed AI legal risk analysis', e)
   }
 }
 
