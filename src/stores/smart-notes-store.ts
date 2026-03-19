@@ -169,12 +169,18 @@ export const useSmartNotesStore = create<SmartNotesState>((set, get) => ({
     if (!trimmed) return
     if (get().isOfflineMode) {
       const id = `local-folder-${Date.now()}`
+      const defaultSubId = `local-subfolder-${Date.now()}`
       set((s) => ({
         folders: [
           ...s.folders,
-          { id, name: trimmed, subfolders: [] },
+          {
+            id,
+            name: trimmed,
+            subfolders: [{ id: defaultSubId, name: 'General', folderId: id, notes: [] }],
+          },
         ],
         selectedFolderId: id,
+        selectedSubfolderId: defaultSubId,
       }))
       await writeSmartNotesSnapshot(get().folders)
       return
@@ -189,6 +195,16 @@ export const useSmartNotesStore = create<SmartNotesState>((set, get) => ({
       const data = await parseApiJsonSafe(res)
       if (!res.ok || !data?.success) {
         set({ error: data?.error || 'Failed to create folder' })
+      } else if (data?.data?.id) {
+        // Keep strict hierarchy usable: every new folder starts with one subfolder.
+        await fetch('/api/smart-notes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'CREATE_SUBFOLDER',
+            payload: { folderId: data.data.id, name: 'General' },
+          }),
+        })
       }
     } finally {
       set({ isSaving: false })
@@ -307,6 +323,10 @@ export const useSmartNotesStore = create<SmartNotesState>((set, get) => ({
     if (get().isOfflineMode) {
       const noteId = `local-note-${Date.now()}`
       const now = new Date().toISOString()
+      const parentFolderId =
+        get()
+          .folders.find((f) => f.subfolders.some((s) => s.id === subfolderId))
+          ?.id ?? get().selectedFolderId
       set((s) => ({
         folders: s.folders.map((f) => ({
           ...f,
@@ -332,6 +352,7 @@ export const useSmartNotesStore = create<SmartNotesState>((set, get) => ({
         })),
         selectedNoteId: noteId,
         selectedSubfolderId: subfolderId,
+        selectedFolderId: parentFolderId ?? s.selectedFolderId,
       }))
       await writeSmartNotesSnapshot(get().folders)
       return noteId

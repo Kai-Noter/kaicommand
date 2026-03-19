@@ -97,6 +97,14 @@ export function SmartNotesEvernoteLayout() {
 
   const allNotes = useMemo(() => flattenNotes(folders), [folders])
   const selectedNote = useMemo(() => allNotes.find((n) => n.id === selectedNoteId), [allNotes, selectedNoteId])
+  const effectiveSubfolderId = useMemo(() => {
+    if (selectedSubfolderId) return selectedSubfolderId
+    if (selectedFolderId) {
+      const f = folders.find((x) => x.id === selectedFolderId)
+      if (f?.subfolders?.[0]?.id) return f.subfolders[0].id
+    }
+    return folders[0]?.subfolders?.[0]?.id ?? null
+  }, [folders, selectedFolderId, selectedSubfolderId])
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -138,8 +146,7 @@ export function SmartNotesEvernoteLayout() {
   const filteredNotes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
     return allNotes
-      .filter((n) => (selectedFolderId ? folders.find((f) => f.id === selectedFolderId)?.subfolders.some((s) => s.id === n.subfolderId) : true))
-      .filter((n) => (selectedSubfolderId ? n.subfolderId === selectedSubfolderId : true))
+      .filter((n) => (effectiveSubfolderId ? n.subfolderId === effectiveSubfolderId : true))
       .filter((n) => (pinnedOnly ? n.isPinned : true))
       .filter((n) => (activeTag ? parseTags(n.tags).includes(activeTag) : true))
       .filter((n) => {
@@ -152,7 +159,7 @@ export function SmartNotesEvernoteLayout() {
         )
       })
       .sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt))
-  }, [allNotes, selectedFolderId, selectedSubfolderId, pinnedOnly, activeTag, searchQuery, folders])
+  }, [allNotes, effectiveSubfolderId, pinnedOnly, activeTag, searchQuery])
 
   const grouped = useMemo(() => {
     const buckets: Record<string, SmartNote[]> = {
@@ -383,9 +390,9 @@ export function SmartNotesEvernoteLayout() {
             <Button
               size="sm"
               className="bg-sky-600 hover:bg-sky-700"
-              disabled={!selectedSubfolderId}
+              disabled={!effectiveSubfolderId}
               onClick={() => {
-                if (selectedSubfolderId) void createNote(selectedSubfolderId)
+                if (effectiveSubfolderId) void createNote(effectiveSubfolderId)
               }}
             >
               <Plus size={12} className="mr-1" /> New
