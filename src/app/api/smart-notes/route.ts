@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getUserId } from '@/lib/api-auth'
-import { indexKnowledgeNode } from '@/lib/second-brain'
 import { createSmartNote, updateSmartNote } from '@/lib/smart-notes'
 
 // Fetch the entire Folder -> Subfolder -> Note hierarchy
@@ -130,10 +129,14 @@ export async function POST(request: NextRequest) {
     }
     
     if (action === 'RENAME_FOLDER') {
-      const folder = await db.smartFolder.update({
+      const result = await db.smartFolder.updateMany({
         where: { id: payload.id, userId },
         data: { name: payload.name }
       })
+      if (result.count === 0) {
+        return NextResponse.json({ error: 'Folder not found', success: false }, { status: 404 })
+      }
+      const folder = await db.smartFolder.findUnique({ where: { id: payload.id } })
       return NextResponse.json({ data: folder, success: true })
     }
 
@@ -146,26 +149,26 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'RENAME_SUBFOLDER') {
-      const subfolder = await db.smartSubfolder.update({
+      const result = await db.smartSubfolder.updateMany({
         where: { id: payload.id, userId },
         data: { name: payload.name }
       })
+      if (result.count === 0) {
+        return NextResponse.json({ error: 'Subfolder not found', success: false }, { status: 404 })
+      }
+      const subfolder = await db.smartSubfolder.findUnique({ where: { id: payload.id } })
       return NextResponse.json({ data: subfolder, success: true })
     }
     
     if (action === 'MOVE_SUBFOLDER') {
-      const subfolder = await db.smartSubfolder.update({
+      const result = await db.smartSubfolder.updateMany({
         where: { id: payload.id, userId },
         data: { folderId: payload.folderId }
       })
-      return NextResponse.json({ data: subfolder, success: true })
-    }
-
-    if (action === 'RENAME_SUBFOLDER') {
-      const subfolder = await db.smartSubfolder.update({
-        where: { id: payload.id, userId },
-        data: { name: payload.name }
-      })
+      if (result.count === 0) {
+        return NextResponse.json({ error: 'Subfolder not found', success: false }, { status: 404 })
+      }
+      const subfolder = await db.smartSubfolder.findUnique({ where: { id: payload.id } })
       return NextResponse.json({ data: subfolder, success: true })
     }
 
@@ -184,10 +187,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'MOVE_NOTE') {
-      const note = await db.smartNote.update({
+      const result = await db.smartNote.updateMany({
         where: { id: payload.id, userId },
         data: { subfolderId: payload.subfolderId }
       })
+      if (result.count === 0) {
+        return NextResponse.json({ error: 'Note not found', success: false }, { status: 404 })
+      }
+      const note = await db.smartNote.findUnique({ where: { id: payload.id } })
       return NextResponse.json({ data: note, success: true })
     }
 
@@ -208,7 +215,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Failed to process smart note action:', error)
-    return NextResponse.json({ error: error.message || 'Failed to process', stack: error.stack, success: false }, { status: 500 })
+    return NextResponse.json({ error: error?.message || 'Failed to process', success: false }, { status: 500 })
   }
 }
 
@@ -227,11 +234,20 @@ export async function DELETE(request: NextRequest) {
     if (!id || !type) return NextResponse.json({ error: 'ID and type required', success: false }, { status: 400 })
 
     if (type === 'folder') {
-      await db.smartFolder.delete({ where: { id, userId } })
+      const result = await db.smartFolder.deleteMany({ where: { id, userId } })
+      if (result.count === 0) {
+        return NextResponse.json({ error: 'Folder not found', success: false }, { status: 404 })
+      }
     } else if (type === 'subfolder') {
-      await db.smartSubfolder.delete({ where: { id, userId } })
+      const result = await db.smartSubfolder.deleteMany({ where: { id, userId } })
+      if (result.count === 0) {
+        return NextResponse.json({ error: 'Subfolder not found', success: false }, { status: 404 })
+      }
     } else if (type === 'note') {
-      await db.smartNote.delete({ where: { id, userId } })
+      const result = await db.smartNote.deleteMany({ where: { id, userId } })
+      if (result.count === 0) {
+        return NextResponse.json({ error: 'Note not found', success: false }, { status: 404 })
+      }
     } else {
       return NextResponse.json({ error: 'Invalid type provided', success: false }, { status: 400 })
     }

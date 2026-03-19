@@ -2,8 +2,6 @@ import { getToken } from 'next-auth/jwt'
 import { NextRequest, NextResponse } from 'next/server'
 import { ensureDemoUser } from '@/lib/db'
 
-const DEMO_USER_ID = 'demo-user-001'
-
 /**
  * Get the current user ID from the session (JWT).
  * If no session, returns DEMO_USER_ID so the app still works for unauthenticated demo use.
@@ -17,8 +15,7 @@ export async function getUserId(request: NextRequest): Promise<string | null> {
   const id = (token as { id?: string })?.id ?? token?.sub
   if (id) return id
   if (process.env.REQUIRE_AUTH === 'true') return null
-  await ensureDemoUser()
-  return DEMO_USER_ID
+  return await ensureDemoUser()
 }
 
 /**
