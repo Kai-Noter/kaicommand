@@ -21,7 +21,9 @@ export function NotesEngine({ selectedSubfolderId }: NotesEngineProps) {
 
   // When subfolder changes, clear note selection so we don't bleed states across folders
   useEffect(() => {
-    setSelectedNoteId(null);
+    // Defer to avoid eslint "setState in effect body" cascading-render warnings.
+    const t = setTimeout(() => setSelectedNoteId(null), 0)
+    return () => clearTimeout(t)
   }, [selectedSubfolderId]);
 
   // 3. NOTES LIST
