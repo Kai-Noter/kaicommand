@@ -57,6 +57,7 @@ function getRecencyBucket(updatedAtIso: string): 'Today' | 'Yesterday' | 'Previo
 export function SmartNotesEvernoteLayout() {
   const [folders, setFolders] = useState<SmartFolder[]>([])
   const [notes, setNotes] = useState<SmartNote[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   const [activeView, setActiveView] = useState<NotesView>('all')
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null)
@@ -76,6 +77,7 @@ export function SmartNotesEvernoteLayout() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   const fetchData = async () => {
+    setIsLoading(true)
     setErrorMsg(null)
     try {
       const res = await fetch('/api/smart-notes')
@@ -91,6 +93,8 @@ export function SmartNotesEvernoteLayout() {
     } catch (e: any) {
       console.error(e)
       setErrorMsg(e?.message ? String(e.message) : 'Failed to load Smart Notes')
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -466,18 +470,38 @@ export function SmartNotesEvernoteLayout() {
             />
           </div>
 
-          {errorMsg && <p className="text-xs text-red-300 mt-2">{errorMsg}</p>}
+          {errorMsg && (
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <p className="text-xs text-red-300">{errorMsg}</p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-zinc-700 text-zinc-200 hover:bg-white/5"
+                onClick={() => void fetchData()}
+              >
+                Retry
+              </Button>
+            </div>
+          )}
         </div>
 
         <ScrollArea className="flex-1 p-2">
-          {notes.length === 0 && (
+          {isLoading && (
             <div className="p-6 text-center text-zinc-500">
               <FileText className="mx-auto mb-3 opacity-50" />
               Loading your Smart Notes...
             </div>
           )}
 
-          {notes.length > 0 && filteredNotes.length === 0 && (
+          {!isLoading && notes.length === 0 && (
+            <div className="p-6 text-center text-zinc-500">
+              <FileText className="mx-auto mb-3 opacity-50" />
+              <p className="text-sm">No notes yet.</p>
+              <p className="text-xs text-zinc-600 mt-2">Click “New” to create your first note.</p>
+            </div>
+          )}
+
+          {!isLoading && notes.length > 0 && filteredNotes.length === 0 && (
             <p className="text-xs text-zinc-500 text-center py-6">No matching notes</p>
           )}
 
