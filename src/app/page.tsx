@@ -116,7 +116,6 @@ import {
   SettingsView
 } from '@/components/views'
 import { LifeManagerView } from '@/components/views/LifeManagerView'
-import { SmartNotesView } from '@/components/views/SmartNotesView'
 import { LegalRadarView } from '@/components/views/LegalRadarView'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -305,7 +304,6 @@ const navItems = [
   { id: 'context', label: 'Work Context', icon: MapPin },
   { id: 'legal-radar', label: 'Legal Radar', icon: Scale },
   { id: 'voice-notes', label: 'Voice Notes', icon: Mic },
-  { id: 'smart-notes', label: 'Smart Notes', icon: FileText },
   { id: 'certifications', label: 'Certifications', icon: Award },
   { id: 'emergency', label: 'Emergency', icon: Siren },
   { id: 'network', label: 'Life Manager', icon: UserPlus },
@@ -637,7 +635,6 @@ export default function Home() {
     fetchContexts()
   }, [])
 
-  // Smart Notes now manages its own data fetching internally
 
   const professionalTabs = ['context', 'voice-notes', 'certifications', 'emergency']
   useEffect(() => {
@@ -1356,11 +1353,6 @@ export default function Home() {
                 submitVoiceNoteParent={submitVoiceNoteParent}
                 deleteVoiceNoteParent={deleteVoiceNoteParent}
               />
-            )}
-
-            {/* Smart Notes Tab */}
-            {activeTab === 'smart-notes' && (
-              <SmartNotesView />
             )}
 
             {/* Certifications Tab */}
