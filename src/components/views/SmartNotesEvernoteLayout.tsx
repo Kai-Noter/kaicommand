@@ -81,7 +81,22 @@ export function SmartNotesEvernoteLayout() {
     setErrorMsg(null)
     try {
       const res = await fetch('/api/smart-notes')
-      const data = await res.json()
+      const raw = await res.text()
+      let data: any = null
+      try {
+        data = raw ? JSON.parse(raw) : null
+      } catch {
+        // Handle cases where upstream/proxy returns empty or non-JSON body.
+        setErrorMsg(`Smart Notes API returned invalid response (${res.status}).`)
+        return
+      }
+
+      if (!res.ok) {
+        const errText = data?.error || `Smart Notes request failed (${res.status}).`
+        setErrorMsg(errText)
+        return
+      }
+
       if (!data.success) {
         setErrorMsg(data.error || 'Failed to load Smart Notes')
         return
