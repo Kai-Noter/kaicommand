@@ -8,12 +8,18 @@ import { ensureDemoUser } from '@/lib/db'
  * Set REQUIRE_AUTH=true to return 401 when not logged in.
  */
 export async function getUserId(request: NextRequest): Promise<string | null> {
-  const token = await getToken({
-    req: request,
-    secret: process.env.NEXTAUTH_SECRET,
-  })
-  const id = (token as { id?: string })?.id ?? token?.sub
-  if (id) return id
+  try {
+    const token = await getToken({
+      req: request,
+      secret: process.env.NEXTAUTH_SECRET,
+    })
+    const id = (token as { id?: string })?.id ?? token?.sub
+    if (id) return id
+  } catch (err) {
+    // If token decoding fails (e.g. missing/invalid secret), continue to demo fallback.
+    console.warn('getUserId token decode failed, falling back to demo mode:', err)
+  }
+
   if (process.env.REQUIRE_AUTH === 'true') return null
   return await ensureDemoUser()
 }

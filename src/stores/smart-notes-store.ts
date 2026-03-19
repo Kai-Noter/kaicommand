@@ -42,6 +42,7 @@ type SmartNotesState = {
   isSaving: boolean
   error: string | null
   hydratedFromCache: boolean
+  isOfflineMode: boolean
 
   initialize: () => Promise<void>
   refresh: () => Promise<void>
@@ -86,6 +87,7 @@ export const useSmartNotesStore = create<SmartNotesState>((set, get) => ({
   isSaving: false,
   error: null,
   hydratedFromCache: false,
+  isOfflineMode: false,
 
   initialize: async () => {
     set({ isLoading: true, error: null })
@@ -109,7 +111,39 @@ export const useSmartNotesStore = create<SmartNotesState>((set, get) => ({
       const res = await fetch('/api/smart-notes')
       const data = await parseApiJsonSafe(res)
       if (!res.ok || !data?.success) {
-        set({ error: data?.error || `Smart Notes request failed (${res.status})`, isLoading: false })
+        const currentFolders = get().folders
+        if (currentFolders.length === 0) {
+          const localFolders: SmartFolder[] = [
+            {
+              id: 'local-folder-1',
+              name: 'Local Notes',
+              subfolders: [
+                {
+                  id: 'local-subfolder-1',
+                  name: 'General',
+                  folderId: 'local-folder-1',
+                  notes: [],
+                },
+              ],
+            },
+          ]
+          set({
+            folders: localFolders,
+            selectedFolderId: localFolders[0].id,
+            selectedSubfolderId: localFolders[0].subfolders[0].id,
+            selectedNoteId: null,
+            isOfflineMode: true,
+            error: (data?.error || `Smart Notes request failed (${res.status})`) + ' — using offline mode',
+            isLoading: false,
+          })
+          await writeSmartNotesSnapshot(localFolders)
+          return
+        }
+        set({
+          error: (data?.error || `Smart Notes request failed (${res.status})`) + ' — using offline mode',
+          isOfflineMode: true,
+          isLoading: false,
+        })
         return
       }
       const folders = (data.folders || []) as SmartFolder[]
@@ -117,11 +151,11 @@ export const useSmartNotesStore = create<SmartNotesState>((set, get) => ({
         const selectedFolderId = state.selectedFolderId || folders[0]?.id || null
         const selectedFolder = folders.find((f) => f.id === selectedFolderId)
         const selectedSubfolderId = state.selectedSubfolderId || selectedFolder?.subfolders[0]?.id || null
-        return { folders, selectedFolderId, selectedSubfolderId, isLoading: false, error: null }
+        return { folders, selectedFolderId, selectedSubfolderId, isLoading: false, error: null, isOfflineMode: false }
       })
       await writeSmartNotesSnapshot(folders)
     } catch (e: any) {
-      set({ error: e?.message ? String(e.message) : 'Failed to load Smart Notes', isLoading: false })
+      set({ error: (e?.message ? String(e.message) : 'Failed to load Smart Notes') + ' — using offline mode', isLoading: false, isOfflineMode: true })
     }
   },
 
@@ -133,6 +167,18 @@ export const useSmartNotesStore = create<SmartNotesState>((set, get) => ({
   createFolder: async (name) => {
     const trimmed = name.trim()
     if (!trimmed) return
+    if (get().isOfflineMode) {
+      const id = `local-folder-${Date.now()}`
+      set((s) => ({
+        folders: [
+          ...s.folders,
+          { id, name: trimmed, subfolders: [] },
+        ],
+        selectedFolderId: id,
+      }))
+      await writeSmartNotesSnapshot(get().folders)
+      return
+    }
     set({ isSaving: true, error: null })
     try {
       const res = await fetch('/api/smart-notes', {
@@ -182,6 +228,26 @@ export const useSmartNotesStore = create<SmartNotesState>((set, get) => ({
   createSubfolder: async (folderId, name) => {
     const trimmed = name.trim()
     if (!trimmed) return
+    if (get().isOfflineMode) {
+      const subId = `local-subfolder-${Date.now()}`
+      set((s) => ({
+        folders: s.folders.map((f) =>
+          f.id === folderId
+            ? {
+                ...f,
+                subfolders: [
+                  ...f.subfolders,
+                  { id: subId, name: trimmed, folderId, notes: [] },
+                ],
+              }
+            : f
+        ),
+        selectedFolderId: folderId,
+        selectedSubfolderId: subId,
+      }))
+      await writeSmartNotesSnapshot(get().folders)
+      return
+    }
     set({ isSaving: true, error: null })
     try {
       await fetch('/api/smart-notes', {
@@ -238,6 +304,38 @@ export const useSmartNotesStore = create<SmartNotesState>((set, get) => ({
   },
 
   createNote: async (subfolderId) => {
+    if (get().isOfflineMode) {
+      const noteId = `local-note-${Date.now()}`
+      const now = new Date().toISOString()
+      set((s) => ({
+        folders: s.folders.map((f) => ({
+          ...f,
+          subfolders: f.subfolders.map((sub) =>
+            sub.id === subfolderId
+              ? {
+                  ...sub,
+                  notes: [
+                    {
+                      id: noteId,
+                      title: 'Untitled',
+                      content: '',
+                      subfolderId,
+                      tags: '[]',
+                      isPinned: false,
+                      updatedAt: now,
+                    },
+                    ...sub.notes,
+                  ],
+                }
+              : sub
+          ),
+        })),
+        selectedNoteId: noteId,
+        selectedSubfolderId: subfolderId,
+      }))
+      await writeSmartNotesSnapshot(get().folders)
+      return noteId
+    }
     set({ isSaving: true, error: null })
     try {
       const res = await fetch('/api/smart-notes', {
@@ -267,6 +365,30 @@ export const useSmartNotesStore = create<SmartNotesState>((set, get) => ({
   },
 
   updateNote: async (id, patch) => {
+    if (get().isOfflineMode) {
+      const now = new Date().toISOString()
+      set((s) => ({
+        folders: s.folders.map((f) => ({
+          ...f,
+          subfolders: f.subfolders.map((sub) => ({
+            ...sub,
+            notes: sub.notes.map((n) =>
+              n.id === id
+                ? {
+                    ...n,
+                    title: patch.title ?? n.title,
+                    content: patch.content ?? n.content,
+                    isPinned: patch.isPinned ?? n.isPinned,
+                    updatedAt: now,
+                  }
+                : n
+            ),
+          })),
+        })),
+      }))
+      await writeSmartNotesSnapshot(get().folders)
+      return
+    }
     set({ isSaving: true, error: null })
     try {
       const state = get()
@@ -292,6 +414,22 @@ export const useSmartNotesStore = create<SmartNotesState>((set, get) => ({
   },
 
   updateNoteTags: async (id, tags) => {
+    if (get().isOfflineMode) {
+      const now = new Date().toISOString()
+      set((s) => ({
+        folders: s.folders.map((f) => ({
+          ...f,
+          subfolders: f.subfolders.map((sub) => ({
+            ...sub,
+            notes: sub.notes.map((n) =>
+              n.id === id ? { ...n, tags: JSON.stringify(tags), updatedAt: now } : n
+            ),
+          })),
+        })),
+      }))
+      await writeSmartNotesSnapshot(get().folders)
+      return
+    }
     set({ isSaving: true, error: null })
     try {
       await fetch('/api/smart-notes', {
@@ -309,6 +447,33 @@ export const useSmartNotesStore = create<SmartNotesState>((set, get) => ({
   },
 
   moveNote: async (id, subfolderId) => {
+    if (get().isOfflineMode) {
+      const s = get()
+      const all = flattenNotes(s.folders)
+      const note = all.find((n) => n.id === id)
+      if (!note) return
+      const now = new Date().toISOString()
+      set((state) => ({
+        folders: state.folders.map((f) => ({
+          ...f,
+          subfolders: f.subfolders.map((sub) => {
+            if (sub.id === note.subfolderId) {
+              return { ...sub, notes: sub.notes.filter((n) => n.id !== id) }
+            }
+            if (sub.id === subfolderId) {
+              return {
+                ...sub,
+                notes: [{ ...note, subfolderId, updatedAt: now }, ...sub.notes],
+              }
+            }
+            return sub
+          }),
+        })),
+        selectedSubfolderId: subfolderId,
+      }))
+      await writeSmartNotesSnapshot(get().folders)
+      return
+    }
     set({ isSaving: true, error: null })
     try {
       await fetch('/api/smart-notes', {
@@ -323,6 +488,20 @@ export const useSmartNotesStore = create<SmartNotesState>((set, get) => ({
   },
 
   deleteNote: async (id) => {
+    if (get().isOfflineMode) {
+      set((s) => ({
+        folders: s.folders.map((f) => ({
+          ...f,
+          subfolders: f.subfolders.map((sub) => ({
+            ...sub,
+            notes: sub.notes.filter((n) => n.id !== id),
+          })),
+        })),
+        selectedNoteId: s.selectedNoteId === id ? null : s.selectedNoteId,
+      }))
+      await writeSmartNotesSnapshot(get().folders)
+      return
+    }
     set({ isSaving: true, error: null })
     try {
       await fetch(`/api/smart-notes?id=${id}&type=note`, { method: 'DELETE' })

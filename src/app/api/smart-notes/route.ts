@@ -106,7 +106,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ folders: enrichHierarchy(folders), success: true })
   } catch (error) {
     console.error('Failed to fetch smart folders:', error)
-    return NextResponse.json({ error: 'Failed to fetch', success: false }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Failed to fetch'
+    return NextResponse.json({ error: message, success: false }, { status: 500 })
   }
 }
 
